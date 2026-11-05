@@ -13,15 +13,24 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.StringWriter;
 import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.logging.Logger;
 
 /**
  * Конвертация JSON в XML для помещения в архив.
  */
 public final class JsonToXmlConverter {
+    private static final Logger log = Logger.getLogger(JsonToXmlConverter.class.getName());
 
     private JsonToXmlConverter() {
     }
 
+    /**
+     * Конвертирует JSON-узел в XML-строку.
+     *
+     * @param node JSON-узел для конвертации
+     * @return XML-строка
+     * @throws Exception при ошибках конвертации
+     */
     public static String toXml(JsonNode node) throws Exception {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         Document doc = dbf.newDocumentBuilder().newDocument();
@@ -44,6 +53,9 @@ public final class JsonToXmlConverter {
         return sw.toString();
     }
 
+    /**
+     * Создаёт XML-элемент из JSON-узла.
+     */
     private static Element buildElement(Document doc,
                                         String name, JsonNode node) {
         Element el = doc.createElement(sanitize(name));
@@ -64,7 +76,10 @@ public final class JsonToXmlConverter {
     }
 
     /**
-     * XML-теги не принимают произвольные символы — приводим к валидному виду.
+     * Приводит имя тега к валидному для XML виду.
+     *
+     * @param name исходное имя
+     * @return валидное имя тега
      */
     private static String sanitize(String name) {
         StringBuilder sb = new StringBuilder();
@@ -75,4 +90,3 @@ public final class JsonToXmlConverter {
         return sb.toString();
     }
 }
-

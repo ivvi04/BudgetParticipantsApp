@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.logging.Logger;
 
 /**
  * Разворачивает JSON-запись в плоскую структуру "имя колонки -> значение".
@@ -14,16 +15,26 @@ import java.util.Map.Entry;
  * свою колонку с индексом — authorities_0_authoritycode, heads_2_fio и т.д.
  */
 public final class JsonFlattener {
+    private static final Logger log = Logger.getLogger(JsonFlattener.class.getName());
 
     private JsonFlattener() {
     }
 
+    /**
+     * Разворачивает JSON-узел в плоскую карту "ключ -> значение".
+     *
+     * @param node JSON-узел для разворачивания
+     * @return плоская карта с развёрнутыми данными
+     */
     public static Map<String, String> flatten(JsonNode node) {
         Map<String, String> out = new LinkedHashMap<>();
         flatten("", node, out);
         return out;
     }
 
+    /**
+     * Рекурсивно разворачивает JSON-узел.
+     */
     private static void flatten(String path, JsonNode node, Map<String, String> out) {
         if (node.isObject()) {
             if (node.isEmpty()) return; // пустой объект — не сохраняем
@@ -43,16 +54,20 @@ public final class JsonFlattener {
         }
     }
 
-
+    /**
+     * Добавляет ключ к пути.
+     */
     private static String append(String path, String key) {
         return path.isEmpty() ? key : path + "_" + key;
     }
 
     /**
      * Приводит имя колонки к валидному для Postgres виду.
+     *
+     * @param path путь к полю
+     * @return валидное имя колонки
      */
     static String col(String path) {
         return path.toLowerCase().replaceAll("[^a-z0-9_]", "_");
     }
 }
-

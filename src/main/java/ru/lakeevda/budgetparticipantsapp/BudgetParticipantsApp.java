@@ -3,6 +3,7 @@ package ru.lakeevda.budgetparticipantsapp;
 import ru.lakeevda.budgetparticipantsapp.client.ApiClient;
 import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
+import ru.lakeevda.budgetparticipantsapp.service.ClickHouseTransferService;
 import ru.lakeevda.budgetparticipantsapp.service.DataLoadService;
 import ru.lakeevda.budgetparticipantsapp.service.ZipService;
 
@@ -11,33 +12,33 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
+/**
+ * Основное приложение для загрузки данных реестра участников бюджетного процесса.
+ * Скачивает данные из API, загружает в PostgreSQL, архивирует прошлые запуски.
+ */
 public final class BudgetParticipantsApp {
+    private static final Logger log = Logger.getLogger(BudgetParticipantsApp.class.getName());
 
     public static void main(String[] args) {
-//        if (args.length != 2) {
-//            System.err.println("Usage: java -jar data-loader.jar <lastUpdateFrom> <lastUpdateTo>");
-//            System.err.println("       dates in ISO format, e.g. 2024-01-01");
-//            System.exit(1);
-//        }
+        log.info("Starting BudgetParticipantsApp");
         try {
             LocalDate from =
                     LocalDate.parse("2024-01-01");
-//                    LocalDate.parse(args[0]);
             LocalDate to =
                     LocalDate.parse("2024-01-31");
-//                    LocalDate.parse(args[1]);
             if (from.isAfter(to)) {
-                System.err.println("lastUpdateFrom must not be after lastUpdateTo");
+                log.severe("lastUpdateFrom must not be after lastUpdateTo");
                 System.exit(1);
             }
             run(from, to);
         } catch (DateTimeParseException e) {
-            System.err.println("Invalid date format: " + e.getMessage());
+            log.log(Level.SEVERE, "Invalid date format: " + e.getMessage(), e);
             System.exit(1);
         } catch (Exception e) {
-            System.err.println("Failed: " + e.getMessage());
-            e.printStackTrace();
+            log.log(Level.SEVERE, "Failed: " + e.getMessage(), e);
             System.exit(2);
         }
     }
@@ -55,9 +56,6 @@ public final class BudgetParticipantsApp {
         // 1. Скачиваем все страницы
         ApiClient client = new ApiClient(props);
         List<File> pageFiles =
-//                Arrays.asList(new File("data/raw/page_2024-01-01_2024-01-31_00001.json"),
-//                        new File("data/raw/page_2024-01-01_2024-01-31_00002.json"));
-//                Collections.singletonList(new File("data/raw/page_test.json"));
                 client.fetchAllPages(from, to, dir);
 
         String url = props.getProperty("db.url");
@@ -71,15 +69,12 @@ public final class BudgetParticipantsApp {
         db.load(pageFiles, from, to);
 
         // Плюс 2: перенос из PostgreSQL в ClickHouse
-//        ClickHouseTransferService ch = new ClickHouseTransferService(cfg);
-//        if (ch.isEnabled(cfg)) {
-//            ch.transfer(cfg.getProperty("db.url"),
-//                    cfg.getProperty("db.user"),
-//                    cfg.getProperty("db.password"),
-//                    cfg.getProperty("db.table", "denorm_data"));
-//        }
+        ClickHouseTransferService ch = new ClickHouseTransferService(props);
+        if (ch.isEnabled(props)) {
+            ch.transfer(url, username, password, table);
+        }
 
-        System.out.printf("Done: %d page file(s), table %s, period %s..%s%n",
-                pageFiles.size(), props.getProperty("db.table"), from, to);
+        log.info(String.format("Done: %d page file(s), table %s, period %s..%s",
+                pageFiles.size(), table, from, to));
     }
 }

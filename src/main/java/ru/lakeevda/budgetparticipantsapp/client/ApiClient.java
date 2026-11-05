@@ -18,11 +18,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Скачивает все страницы API за период, сохраняет сырые ответы в файлы.
+ * Клиент для скачивания страниц API.
+ * Скачивает все страницы API за указанный период и сохраняет сырые ответы в файлы.
  */
 public class ApiClient {
+    private static final Logger log = Logger.getLogger(ApiClient.class.getName());
 
     private final String urlTemplate;
     private final String itemsKey;
@@ -30,6 +34,11 @@ public class ApiClient {
     private final DateTimeFormatter dateFormat;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /**
+     * Создаёт нового клиента API.
+     *
+     * @param cfg свойства конфигурации
+     */
     public ApiClient(Properties cfg) {
         this.urlTemplate = cfg.getProperty("api.url");
         this.itemsKey = cfg.getProperty("api.itemsKey", "");
@@ -38,7 +47,17 @@ public class ApiClient {
                 cfg.getProperty("api.dateFormat", "yyyy-MM-dd"));
     }
 
+    /**
+     * Скачивает все страницы API за указанный период.
+     *
+     * @param from начальная дата
+     * @param to конечная дата
+     * @param rawDir директория для хранения сырых файлов
+     * @return список скачанных файлов
+     * @throws IOException при ошибках сети или файловой системы
+     */
     public List<File> fetchAllPages(LocalDate from, LocalDate to, File rawDir) throws IOException {
+        log.info(String.format("Fetching all pages for period %s..%s", from, to));
         List<File> result = new ArrayList<>();
         try (CloseableHttpClient http = HttpClients.createDefault()) {
             int page = 1;
@@ -48,9 +67,9 @@ public class ApiClient {
                         dateFormat.format(from), dateFormat.format(to), page));
                 HttpGet get = new HttpGet(uri);
                 try (CloseableHttpResponse resp = http.execute(get)) {
-                    if (resp.getStatusLine().getStatusCode() != 200) {
-                        throw new IOException("HTTP " + resp.getStatusLine().getStatusCode()
-                                + " for " + uri);
+                    int status = resp.getStatusLine().getStatusCode();
+                    if (status != 200) {
+                        throw new IOException("HTTP " + status + " for " + uri);
                     }
                     String body = EntityUtils.toString(resp.getEntity(), StandardCharsets.UTF_8);
                     JsonNode root = mapper.readTree(body);
@@ -60,7 +79,7 @@ public class ApiClient {
                         JsonNode tp = root.get(totalPagesKey);
                         totalPages = (tp != null && tp.isInt()) ? tp.asInt() : Integer.MAX_VALUE;
                         if (totalPages <= 0) {
-                            System.out.println("No pages for the period (pageCount="
+                            log.info("No pages for the period (pageCount="
                                     + (tp == null ? "null" : tp.asText()) + ")");
                             break;
                         }
@@ -70,7 +89,7 @@ public class ApiClient {
                             String.format("page_%s_%s_%05d.json", from, to, page));
                     Files.write(out.toPath(), body.getBytes(StandardCharsets.UTF_8));
                     result.add(out);
-                    System.out.println("Downloaded: " + out.getName()
+                    log.info("Downloaded: " + out.getName()
                             + " (" + items.size() + " records, page " + page
                             + (totalPages > 0 ? "/" + totalPages : "") + ")");
 
@@ -81,11 +100,16 @@ public class ApiClient {
                 }
             }
         }
+        log.info("Total pages downloaded: " + result.size());
         return result;
     }
 
     /**
-     * Достаёт массив записей: либо из заданного ключа, либо корень, либо первый массив.
+     * Достаёт массив записей из JSON-ответа.
+     * Ищет массив либо в указанном ключе, либо в корне, либо первый массив в объекте.
+     *
+     * @param root корневой узел JSON
+     * @return массив записей
      */
     JsonNode pickItems(JsonNode root) {
         if (!itemsKey.isEmpty()) {
@@ -102,4 +126,3 @@ public class ApiClient {
         throw new IllegalStateException("No array of records in response");
     }
 }
-
