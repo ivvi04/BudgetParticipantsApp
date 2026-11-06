@@ -46,10 +46,8 @@ public final class BudgetParticipantsApp {
     }
 
     private static void run(LocalDate from, LocalDate to) throws IOException, SQLException {
-        ConfigLoader configLoader = ConfigLoader.getInstance();
-        Properties props = configLoader.load();
 
-        String rawDir = props.getProperty("storage.rawDir", "data/raw");
+        String rawDir = ConfigLoader.getProperty("storage.rawDir", "data/raw");
         File dir = new File(rawDir);
         if (!dir.exists()) dir.mkdirs();
 
@@ -57,27 +55,26 @@ public final class BudgetParticipantsApp {
         ZipService.zipPreviousRuns(dir, from, to);
 
         // 1. Скачиваем все страницы
-        ApiClient client = new ApiClient(props);
+        ApiClient client = new ApiClient();
         List<File> pageFiles =
                 client.fetchAllPages(from, to, dir);
 
         PostgresConnection postgresConnection = PostgresConnection.getInstance();
 
         // 2. Денормализованная загрузка в PostgreSQL (перезапись по ключам периода)
-        DataLoadService db = new DataLoadService(postgresConnection, props.getProperty("postgres.table"));
+        DataLoadService db = new DataLoadService(postgresConnection,
+                ConfigLoader.getProperty("postgres.table"));
         db.load(pageFiles, from, to);
 
         // Плюс 2: перенос из PostgreSQL в ClickHouse
         ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
-        ClickHouseTransferService ch = new ClickHouseTransferService(props);
-        if (ch.isEnabled(props)) {
-            ch.transfer(props.getProperty("db.url"),
-                    props.getProperty("db.username"),
-                    props.getProperty("db.password"),
-                    props.getProperty("db.table"));
+        ClickHouseTransferService ch = new ClickHouseTransferService(clickHouseConnection,
+                ConfigLoader.getProperty("clickhouse.table"));
+        if (ch.isEnabled()) {
+            ch.transfer(postgresConnection, ConfigLoader.getProperty("db.table"));
         }
 
         log.info(String.format("Done: %d page file(s), table %s, period %s..%s",
-                pageFiles.size(), props.getProperty("db.table"), from, to));
+                pageFiles.size(), ConfigLoader.getProperty("db.table"), from, to));
     }
 }

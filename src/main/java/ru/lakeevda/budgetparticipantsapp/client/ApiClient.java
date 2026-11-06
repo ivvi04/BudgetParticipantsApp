@@ -7,6 +7,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,15 +36,13 @@ public class ApiClient {
 
     /**
      * Создаёт нового клиента API.
-     *
-     * @param cfg свойства конфигурации
      */
-    public ApiClient(Properties cfg) {
-        this.urlTemplate = cfg.getProperty("api.url");
-        this.itemsKey = cfg.getProperty("api.itemsKey", "");
-        this.totalPagesKey = cfg.getProperty("api.totalPagesKey", "");
+    public ApiClient() {
+        this.urlTemplate = ConfigLoader.getProperty("api.url");
+        this.itemsKey = ConfigLoader.getProperty("api.itemsKey", "");
+        this.totalPagesKey = ConfigLoader.getProperty("api.totalPagesKey", "");
         this.dateFormat = DateTimeFormatter.ofPattern(
-                cfg.getProperty("api.dateFormat", "yyyy-MM-dd"));
+                ConfigLoader.getProperty("api.dateFormat", "yyyy-MM-dd"));
     }
 
     /**

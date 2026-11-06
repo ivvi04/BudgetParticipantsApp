@@ -19,9 +19,21 @@ public class ConfigLoader {
      * Кэширует загруженные свойства.
      * null до первого вызова load().
      */
-    private Properties cachedProperties;
+    private final Properties properties;
 
     private ConfigLoader() {
+        this.properties = new Properties();
+        try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(PROPERTIES_FILE)) {
+            if (is == null) {
+                throw new IllegalStateException("Properties file '" + PROPERTIES_FILE + "' not found in classpath");
+            }
+            this.properties.load(is);
+            log.info("Configuration loaded from " + PROPERTIES_FILE);
+        } catch (IOException e) {
+            String message = "Failed to load properties from '" + PROPERTIES_FILE + "'";
+            log.log(Level.SEVERE, message, e);
+            throw new RuntimeException(message, e);
+        }
     }
 
     /**
@@ -33,31 +45,25 @@ public class ConfigLoader {
         return INSTANCE;
     }
 
-    /**
-     * Загружает все свойства из файла конфигурации один раз.
-     * При последующих вызовах возвращает кэшированные свойства.
-     *
-     * @return Properties объект (из кэша или загруженный заново)
-     * @throws IllegalStateException если файл конфигурации не найден
-     */
-    public Properties load() {
-        if (cachedProperties != null) {
-            log.fine("Configuration already loaded, returning cached instance");
-            return cachedProperties;
+
+    public static String getProperty(String key, String defaultValue) {
+        String value;
+        try {
+            value = getProperty(key);
+        } catch (Exception e) {
+            value = defaultValue;
         }
-        
-        Properties props = new Properties();
-        try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(PROPERTIES_FILE)) {
-            if (is == null) {
-                throw new IllegalStateException("Properties file '" + PROPERTIES_FILE + "' not found in classpath");
-            }
-            props.load(is);
-            log.info("Configuration loaded from " + PROPERTIES_FILE);
-            cachedProperties = props;
-        } catch (IOException e) {
-            log.log(Level.SEVERE, "Failed to load properties from '" + PROPERTIES_FILE + "'", e);
-            throw new RuntimeException("Failed to load properties from '" + PROPERTIES_FILE + "'", e);
-        }
-        return cachedProperties;
+        return value;
     }
+
+    public static String getProperty(String key) {
+        if (INSTANCE.properties.containsKey(key)) {
+            return INSTANCE.properties.getProperty(key);
+        } else {
+            String message = "Property with key '" + key + "' not found";
+            log.log(Level.SEVERE, message);
+            throw new RuntimeException(message);
+        }
+    }
+
 }

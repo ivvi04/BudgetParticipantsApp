@@ -20,10 +20,9 @@ public class PostgresConnection implements DatabaseConnection {
     private final String password;
 
     private PostgresConnection() {
-        Properties props = ConfigLoader.getInstance().load();
-        this.url = props.getProperty("postgres.url");
-        this.username = props.getProperty("postgres.username");
-        this.password = props.getProperty("postgres.password");
+        this.url = ConfigLoader.getProperty("postgres.url");
+        this.username = ConfigLoader.getProperty("postgres.username");
+        this.password = ConfigLoader.getProperty("postgres.password");
         if (url == null || username == null || password == null) {
             throw new IllegalStateException("Database connection properties are not set correctly");
         }

@@ -20,10 +20,9 @@ public class ClickHouseConnection implements DatabaseConnection {
     private final String password;
 
     private ClickHouseConnection() {
-        Properties props = ConfigLoader.getInstance().load();
-        this.url = props.getProperty("db.url");
-        this.username = props.getProperty("db.username");
-        this.password = props.getProperty("db.password");
+        this.url = ConfigLoader.getProperty("clickhouse.url");
+        this.username = ConfigLoader.getProperty("clickhouse.username");
+        this.password = ConfigLoader.getProperty("clickhouse.password");
         if (url == null || username == null || password == null) {
             throw new IllegalStateException("Database connection properties are not set correctly");
         }

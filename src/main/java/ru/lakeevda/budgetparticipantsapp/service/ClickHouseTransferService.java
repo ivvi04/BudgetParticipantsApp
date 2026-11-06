@@ -1,5 +1,8 @@
 package ru.lakeevda.budgetparticipantsapp.service;
 
+import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
+import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
+
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,46 +17,39 @@ import java.util.logging.Logger;
 public class ClickHouseTransferService {
     private static final Logger log = Logger.getLogger(ClickHouseTransferService.class.getName());
 
-    private final String chUrl;
-    private final String chUser;
-    private final String chPassword;
+    private final DatabaseConnection clickHouseConnection;
     private final String chTable;
 
-    public ClickHouseTransferService(Properties cfg) {
-        this.chUrl = cfg.getProperty("clickhouse.url", "jdbc:clickhouse://localhost:8123/default");
-        this.chUser = cfg.getProperty("clickhouse.user", "default");
-        this.chPassword = cfg.getProperty("clickhouse.password", "");
-        this.chTable = cfg.getProperty("clickhouse.table", "denorm_data");
+    public ClickHouseTransferService(DatabaseConnection clickHouseConnection, String table) {
+        this.clickHouseConnection = clickHouseConnection;
+        this.chTable = table;
     }
 
     /**
      * Проверяет, включён ли перенос в ClickHouse.
      *
-     * @param cfg свойства конфигурации
      * @return true если перенос включён
      */
-    public boolean isEnabled(Properties cfg) {
-        return Boolean.parseBoolean(cfg.getProperty("clickhouse.enabled", "false"));
+    public boolean isEnabled() {
+        return Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.enabled", "false"));
     }
 
     /**
      * Переносит данные из PostgreSQL в ClickHouse.
      *
-     * @param pgUrl URL PostgreSQL
-     * @param pgUser имя пользователя PostgreSQL
-     * @param pgPassword пароль PostgreSQL
-     * @param pgTable имя таблицы PostgreSQL
+     * @param postgresConnection подключение к базе данных PostgreSQL
+     * @param postgresTable имя таблицы PostgreSQL
      * @throws SQLException при ошибках работы с БД
      */
-    public void transfer(String pgUrl, String pgUser, String pgPassword, String pgTable)
+    public void transfer(DatabaseConnection postgresConnection, String postgresTable)
             throws SQLException {
         log.info("Starting transfer from PostgreSQL to ClickHouse");
-        try (Connection pg = DriverManager.getConnection(pgUrl, pgUser, pgPassword);
-             Connection ch = DriverManager.getConnection(chUrl, chUser, chPassword)) {
+        try (Connection pg = postgresConnection.getConnection();
+             Connection ch = clickHouseConnection.getConnection()) {
 
-            List<String> columns = readPgColumns(pg, pgTable);
+            List<String> columns = readPgColumns(pg, postgresTable);
             ensureChTable(ch, columns);
-            long copied = copyRows(pg, ch, pgTable, columns);
+            long copied = copyRows(pg, ch, postgresTable, columns);
             log.info("ClickHouse: transferred " + copied + " row(s) into " + chTable);
         }
     }
