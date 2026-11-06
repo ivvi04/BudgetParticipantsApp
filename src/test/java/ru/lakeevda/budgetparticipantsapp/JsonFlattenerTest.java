@@ -54,14 +54,14 @@ public class JsonFlattenerTest {
         assertEquals("1", flat.get("info_isogv"));
         assertEquals("false", flat.get("info_egrulnotincluded"));
         assertNull(flat.get("info_dateupdate"));
-        assertTrue(flat.containsKey("authorities")); // пустой массив не теряется
+        assertFalse(flat.containsKey("authorities")); // пустой массив не пишется
         assertEquals("84.30", flat.get("activities_0_activitycode"));
         assertEquals("основной", flat.get("activities_0_activitykind"));
         assertEquals("ПУРИС ЕЛЕНА ПЕТРОВНА", flat.get("heads_0_fio"));
         assertEquals("false", flat.get("heads_0_headmain"));
         assertEquals("лс ПБС", flat.get("facialaccounts_0_kindname"));
         assertEquals("05514П22640", flat.get("facialaccounts_1_num"));
-        assertTrue(flat.containsKey("contracts"));
+        assertFalse(flat.containsKey("contracts"));
     }
 
     /**
