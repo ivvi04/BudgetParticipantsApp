@@ -9,18 +9,26 @@ import java.util.logging.Logger;
 /**
  * Лоадер конфигурации.
  * Загружает свойства из application.properties, расположенного в classpath.
+ * Обеспечивает кэширование и единый экземпляр конфигурации.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class ConfigLoader {
+
     private static final Logger log = Logger.getLogger(ConfigLoader.class.getName());
-    private static final String PROPERTIES_FILE = "application.properties";
     private static final ConfigLoader INSTANCE = new ConfigLoader();
-    
-    /**
-     * Кэширует загруженные свойства.
-     * null до первого вызова load().
-     */
+
+    private static final String PROPERTIES_FILE = "application.properties";
+
     private final Properties properties;
 
+    /**
+     * Конструктор-фабрика.
+     * Загружает свойства из application.properties.
+     * @throws IllegalStateException если файл конфигурации не найден
+     * @throws RuntimeException при ошибке загрузки конфигурации
+     */
     private ConfigLoader() {
         this.properties = new Properties();
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(PROPERTIES_FILE)) {
@@ -31,7 +39,7 @@ public class ConfigLoader {
             log.info("Configuration loaded from " + PROPERTIES_FILE);
         } catch (IOException e) {
             String message = "Failed to load properties from '" + PROPERTIES_FILE + "'";
-            log.log(Level.INFO, message, e);
+            log.log(Level.SEVERE, message, e);
             throw new RuntimeException(message, e);
         }
     }
@@ -46,6 +54,13 @@ public class ConfigLoader {
     }
 
 
+    /**
+     * Получает значение свойства с заданным значением по умолчанию.
+     *
+     * @param key ключ свойства
+     * @param defaultValue значение по умолчанию
+     * @return значение свойства или defaultValue если ключ не найден
+     */
     public static String getProperty(String key, String defaultValue) {
         String value;
         try {
@@ -56,6 +71,13 @@ public class ConfigLoader {
         return value;
     }
 
+    /**
+     * Получает значение свойства.
+     *
+     * @param key ключ свойства
+     * @return значение свойства
+     * @throws RuntimeException если ключ не найден
+     */
     public static String getProperty(String key) {
         if (INSTANCE.properties.containsKey(key)) {
             return INSTANCE.properties.getProperty(key);

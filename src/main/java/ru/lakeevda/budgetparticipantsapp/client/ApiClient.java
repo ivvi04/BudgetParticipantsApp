@@ -24,8 +24,12 @@ import java.util.logging.Logger;
 /**
  * Клиент для скачивания страниц API.
  * Скачивает все страницы API за указанный период и сохраняет сырые ответы в файлы.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class ApiClient {
+
     private static final Logger log = Logger.getLogger(ApiClient.class.getName());
 
     private final String urlTemplate;
@@ -36,6 +40,7 @@ public class ApiClient {
 
     /**
      * Создаёт нового клиента API.
+     * Конфигурация загружается из application.properties.
      */
     public ApiClient() {
         this.urlTemplate = ConfigLoader.getProperty("api.url");
@@ -47,9 +52,10 @@ public class ApiClient {
 
     /**
      * Скачивает все страницы API за указанный период.
+     * Выполняет пагинацию до получения всех записей.
      *
-     * @param from начальная дата
-     * @param to конечная дата
+     * @param from начальная дата периода
+     * @param to конечная дата периода
      * @param rawDir директория для хранения сырых файлов
      * @return список скачанных файлов
      * @throws IOException при ошибках сети или файловой системы
@@ -103,11 +109,12 @@ public class ApiClient {
     }
 
     /**
-     * Достаёт массив записей из JSON-ответа.
+     * Извлекает массив записей из JSON-ответа.
      * Ищет массив либо в указанном ключе, либо в корне, либо первый массив в объекте.
      *
      * @param root корневой узел JSON
      * @return массив записей
+     * @throws IllegalStateException если массив не найден
      */
     JsonNode pickItems(JsonNode root) {
         if (!itemsKey.isEmpty()) {

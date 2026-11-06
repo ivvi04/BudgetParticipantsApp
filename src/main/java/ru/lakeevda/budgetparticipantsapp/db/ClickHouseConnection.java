@@ -11,14 +11,25 @@ import java.util.logging.Logger;
 
 /**
  * Подключение к базе данных ClickHouse.
+ * Реализует интерфейс DatabaseConnection.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class ClickHouseConnection implements DatabaseConnection {
+
     private static final Logger logger = Logger.getLogger(ClickHouseConnection.class.getName());
     private static final ClickHouseConnection INSTANCE = new ClickHouseConnection();
+
     private final String url;
     private final String username;
     private final String password;
 
+    /**
+     * Конструктор-фабрика.
+     * Загружает конфигурацию из application.properties.
+     * @throws IllegalStateException если конфигурация некорректна
+     */
     private ClickHouseConnection() {
         this.url = ConfigLoader.getProperty("clickhouse.url");
         this.username = ConfigLoader.getProperty("clickhouse.username");
@@ -29,7 +40,7 @@ public class ClickHouseConnection implements DatabaseConnection {
     }
 
     /**
-     * Получает единственное подключение к базе данных.
+     * Получает единственное подключение к базе данных ClickHouse.
      *
      * @return единственный экземпляр DatabaseConnection
      */
@@ -37,11 +48,22 @@ public class ClickHouseConnection implements DatabaseConnection {
         return INSTANCE;
     }
 
+    /**
+     * Возвращает имя базы данных ClickHouse.
+     *
+     * @return "ClickHouse"
+     */
     @Override
     public String getDatabaseName() {
         return "ClickHouse";
     }
 
+    /**
+     * Возвращает подключение к базе данных ClickHouse.
+     *
+     * @return подключение к ClickHouse
+     * @throws SQLException при ошибках подключения
+     */
     @Override
     public Connection getConnection() throws SQLException {
         logger.log(Level.INFO, "Opening database connection to %s as user %s", new Object[]{url, username});

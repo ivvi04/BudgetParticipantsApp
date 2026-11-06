@@ -15,22 +15,28 @@ import java.util.logging.Logger;
 /**
  * Сервис для загрузки данных в базу данных.
  * Создаёт таблицу, добавляет недостающие колонки динамически и загружает данные.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class DataLoadService {
+
     private static final Logger log = Logger.getLogger(DataLoadService.class.getName());
 
-    // Жёсткий предел Postgres - 1600 колонок. При подходе к 1500 - предупреждаем,
-    // после 1595 - новый столбец не создаём, чтобы не уронить ALTER TABLE.
     private static final int COLUMN_LIMIT_SOFT = 1500;
     private static final int COLUMN_LIMIT_HARD = 1595;
-
     private static final int DEFAULT_BATCH_SIZE = 32000;
 
     private final PostgresConnection databaseConnection;
     private final ObjectMapper mapper = new ObjectMapper();
-
     private final String table;
 
+    /**
+     * Конструктор сервиса загрузки данных.
+     *
+     * @param databaseConnection подключение к базе данных
+     * @param table имя таблицы для загрузки
+     */
     public DataLoadService(PostgresConnection databaseConnection, String table) {
         this.databaseConnection = databaseConnection;
         this.table = table;
@@ -38,6 +44,7 @@ public class DataLoadService {
 
     /**
      * Загружает данные из файлов JSON в базу данных.
+     * Удаляет предыдущие данные за период и перезаписывает новыми.
      *
      * @param pageFiles файлы с JSON данными
      * @param from начальная дата периода
@@ -91,6 +98,9 @@ public class DataLoadService {
 
     /**
      * Создаёт таблицу, если она не существует.
+     *
+     * @param conn подключение к базе данных
+     * @throws SQLException если таблица не может быть создана
      */
     private void ensureTable(Connection conn) throws SQLException {
         try (Statement st = conn.createStatement()) {
@@ -108,6 +118,7 @@ public class DataLoadService {
      * @param conn подключение к БД
      * @param cols набор новых колонок
      * @return фактический набор колонок таблицы
+     * @throws SQLException при ошибках работы с БД
      */
     private Set<String> addMissingColumns(Connection conn, Set<String> cols) throws SQLException {
         Set<String> existing = new HashSet<>();
@@ -147,6 +158,11 @@ public class DataLoadService {
 
     /**
      * Удаляет строки за указанный период.
+     *
+     * @param conn подключение к базе данных
+     * @param from начальная дата периода
+     * @param to конечная дата периода
+     * @throws SQLException при ошибках работы с БД
      */
     private void deleteByPeriod(Connection conn, LocalDate from, LocalDate to) throws SQLException {
         String sql = "DELETE FROM " + table
@@ -170,6 +186,7 @@ public class DataLoadService {
      * @param conn подключение к БД
      * @param rows список строк для вставки
      * @param cols набор всех колонок таблицы
+     * @throws SQLException при ошибках работы с БД
      */
     private void insertRows(Connection conn, List<Map<String, String>> rows,
                             Set<String> cols) throws SQLException {

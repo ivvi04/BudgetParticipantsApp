@@ -13,13 +13,23 @@ import java.util.logging.Logger;
 /**
  * Сервис для переноса данных из PostgreSQL в ClickHouse.
  * Переносит содержимое денормализованной таблицы.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class ClickHouseTransferService {
+
     private static final Logger log = Logger.getLogger(ClickHouseTransferService.class.getName());
 
     private final DatabaseConnection clickHouseConnection;
     private final String chTable;
 
+    /**
+     * Конструктор сервиса переноса в ClickHouse.
+     *
+     * @param clickHouseConnection подключение к ClickHouse
+     * @param table имя таблицы в ClickHouse
+     */
     public ClickHouseTransferService(DatabaseConnection clickHouseConnection, String table) {
         this.clickHouseConnection = clickHouseConnection;
         this.chTable = table;
@@ -28,7 +38,7 @@ public class ClickHouseTransferService {
     /**
      * Проверяет, включён ли перенос в ClickHouse.
      *
-     * @return true если перенос включён
+     * @return true если перенос включён, false иначе
      */
     public boolean isEnabled() {
         return Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.enabled", "false"));
@@ -37,7 +47,7 @@ public class ClickHouseTransferService {
     /**
      * Переносит данные из PostgreSQL в ClickHouse.
      *
-     * @param postgresConnection подключение к базе данных PostgreSQL
+     * @param postgresConnection подключение к PostgreSQL
      * @param postgresTable имя таблицы PostgreSQL
      * @throws SQLException при ошибках работы с БД
      */
@@ -58,6 +68,7 @@ public class ClickHouseTransferService {
      * Читает список колонок из PostgreSQL таблицы.
      *
      * @param pg подключение к PostgreSQL
+     * @param table имя таблицы
      * @return список имён колонок
      * @throws SQLException при ошибках
      */

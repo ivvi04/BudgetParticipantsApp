@@ -8,8 +8,20 @@ import java.util.Map;
 
 import static org.junit.Assert.*;
 
+/**
+ * Тесты для класса JsonFlattener.
+ * Проверяет корректность разворачивания JSON в плоскую структуру.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
+ */
 public class JsonFlattenerTest {
 
+    /**
+     * Проверяет разворачивание структуры записи УПФР Болотнинского района.
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
     @Test
     public void flattensRubpEntry() throws Exception {
         // Структура - по фактическому ответу ЕПБС (запись УПФР Болотнинского района)
@@ -52,6 +64,11 @@ public class JsonFlattenerTest {
         assertTrue(flat.containsKey("contracts"));
     }
 
+    /**
+     * Проверяет санитизацию имён колонок (преобразование в нижний регистр).
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
     @Test
     public void sanitizesColumnNames() throws Exception {
         String json = "{\"firstName-A\": 1}";
@@ -59,6 +76,12 @@ public class JsonFlattenerTest {
         assertEquals("1", flat.get("firstname_a"));
     }
 
+    /**
+     * Проверяет, что массивы не сохраняются целиком как ключи.
+     * Регрессионная проверка.
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
     @Test
     public void noWholeArraysStored() throws Exception {
         // Регрессионная проверка: ни один ключ не представляет массив целиком

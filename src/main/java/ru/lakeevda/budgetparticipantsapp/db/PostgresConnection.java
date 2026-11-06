@@ -10,15 +10,26 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Подключение к базе данных Postgres.
+ * Подключение к базе данных PostgreSQL.
+ * Реализует интерфейс DatabaseConnection.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public class PostgresConnection implements DatabaseConnection {
+
     private static final Logger logger = Logger.getLogger(PostgresConnection.class.getName());
     private static final PostgresConnection INSTANCE = new PostgresConnection();
+
     private final String url;
     private final String username;
     private final String password;
 
+    /**
+     * Конструктор-фабрика.
+     * Загружает конфигурацию из application.properties.
+     * @throws IllegalStateException если конфигурация некорректна
+     */
     private PostgresConnection() {
         this.url = ConfigLoader.getProperty("postgres.url");
         this.username = ConfigLoader.getProperty("postgres.username");
@@ -29,7 +40,7 @@ public class PostgresConnection implements DatabaseConnection {
     }
 
     /**
-     * Получает единственное подключение к базе данных.
+     * Получает единственное подключение к базе данных PostgreSQL.
      *
      * @return единственный экземпляр DatabaseConnection
      */
@@ -37,11 +48,22 @@ public class PostgresConnection implements DatabaseConnection {
         return INSTANCE;
     }
 
+    /**
+     * Возвращает имя базы данных PostgreSQL.
+     *
+     * @return "PostgreSQL"
+     */
     @Override
     public String getDatabaseName() {
         return "PostgreSQL";
     }
 
+    /**
+     * Возвращает подключение к базе данных PostgreSQL.
+     *
+     * @return подключение к PostgreSQL
+     * @throws SQLException при ошибках подключения
+     */
     @Override
     public Connection getConnection() throws SQLException {
         logger.log(Level.INFO, "Opening database connection to %s as user %s", new Object[]{url, username});

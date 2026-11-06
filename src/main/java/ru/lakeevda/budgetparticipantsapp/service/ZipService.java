@@ -15,16 +15,22 @@ import java.util.logging.Logger;
 /**
  * Сервис для архивации результатов прошлых загрузок.
  * JSON конвертируется в XML и сохраняется только в архиве.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public final class ZipService {
-    private static final Logger log = Logger.getLogger(ZipService.class.getName());
 
+    private static final Logger log = Logger.getLogger(ZipService.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private ZipService() { }
+    /** Частный конструктор. */
+    private ZipService() {
+    }
 
     /**
      * Архивирует результаты прошлых загрузок в ZIP-файл.
+     * Конвертирует JSON в XML и удаляет исходные файлы.
      *
      * @param rawDir директория с сырыми JSON файлами
      * @param from начальная дата периода

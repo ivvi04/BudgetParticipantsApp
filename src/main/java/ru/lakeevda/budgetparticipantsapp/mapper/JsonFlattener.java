@@ -13,10 +13,15 @@ import java.util.logging.Logger;
  * Вложенные объекты разворачиваются через подчёркивание: info.fullName -> info_fullname.
  * Массивы не пишутся целиком как json/jsonb: каждый элемент получает
  * свою колонку с индексом — authorities_0_authoritycode, heads_2_fio и т.д.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public final class JsonFlattener {
+
     private static final Logger log = Logger.getLogger(JsonFlattener.class.getName());
 
+    /** Частный конструктор. */
     private JsonFlattener() {
     }
 
@@ -34,6 +39,11 @@ public final class JsonFlattener {
 
     /**
      * Рекурсивно разворачивает JSON-узел.
+     * Обрабатывает объекты, массивы и primitive значения.
+     *
+     * @param path текущий путь к узлу
+     * @param node JSON-узел для обработки
+     * @param out результирующая плоская карта
      */
     private static void flatten(String path, JsonNode node, Map<String, String> out) {
         if (node.isObject()) {
@@ -56,6 +66,10 @@ public final class JsonFlattener {
 
     /**
      * Добавляет ключ к пути.
+     *
+     * @param path исходный путь
+     * @param key ключ для добавления
+     * @return новый путь
      */
     private static String append(String path, String key) {
         return path.isEmpty() ? key : path + "_" + key;

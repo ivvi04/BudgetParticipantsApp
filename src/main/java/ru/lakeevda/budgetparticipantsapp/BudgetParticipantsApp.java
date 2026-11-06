@@ -20,10 +20,19 @@ import java.util.logging.Logger;
 /**
  * Основное приложение для загрузки данных реестра участников бюджетного процесса.
  * Скачивает данные из API, загружает в PostgreSQL, архивирует прошлые запуски.
+ *
+ * @author lakeev-da
+ * @since 2026-11-06
  */
 public final class BudgetParticipantsApp {
+
     private static final Logger log = Logger.getLogger(BudgetParticipantsApp.class.getName());
 
+    /**
+     * Точка входа в приложение.
+     *
+     * @param args аргументы командной строки (формат дат: yyyy-MM-dd)
+     */
     public static void main(String[] args) {
         log.info("Starting BudgetParticipantsApp");
         try {
@@ -45,28 +54,41 @@ public final class BudgetParticipantsApp {
         }
     }
 
+    /**
+     * Выполняет основную логику приложения.
+     * 1. Скачивает страницы API
+     * 2. Загружает в PostgreSQL
+     * 3. Переносит в ClickHouse (если включено)
+     * 4. Архивирует прошлые запуски
+     *
+     * @param from начальная дата периода
+     * @param to конечная дата периода
+     * @throws IOException при ошибках ввода-вывода
+     * @throws SQLException при ошибках работы с БД
+     */
     private static void run(LocalDate from, LocalDate to) throws IOException, SQLException {
-
+        /** Директория для хранения сырых данных. */
         String rawDir = ConfigLoader.getProperty("storage.rawDir", "data/raw");
         File dir = new File(rawDir);
         if (!dir.exists()) dir.mkdirs();
 
-        // 3. Ранее скачанные данные -> json + производные xml в zip
+        /** Архивирует прошлые запуски. */
         ZipService.zipPreviousRuns(dir, from, to);
 
-        // 1. Скачиваем все страницы
+        /** Скачивает все страницы API. */
         ApiClient client = new ApiClient();
         List<File> pageFiles =
                 client.fetchAllPages(from, to, dir);
 
+        /** Подключение к PostgreSQL. */
         PostgresConnection postgresConnection = PostgresConnection.getInstance();
 
-        // 2. Денормализованная загрузка в PostgreSQL (перезапись по ключам периода)
+        /** Загружает данные в PostgreSQL. */
         DataLoadService db = new DataLoadService(postgresConnection,
                 ConfigLoader.getProperty("postgres.table"));
         db.load(pageFiles, from, to);
 
-        // Плюс 2: перенос из PostgreSQL в ClickHouse
+        /** Подключение к ClickHouse. */
         ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
         ClickHouseTransferService ch = new ClickHouseTransferService(clickHouseConnection,
                 ConfigLoader.getProperty("clickhouse.table"));
