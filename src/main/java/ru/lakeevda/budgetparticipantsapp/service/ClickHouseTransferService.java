@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.StringJoiner;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -63,7 +62,6 @@ public class ClickHouseTransferService {
      * Читает список колонок из PostgreSQL таблицы.
      *
      * @param pg подключение к PostgreSQL
-     * @param pgTable имя таблицы
      * @return список имён колонок
      * @throws SQLException при ошибках
      */

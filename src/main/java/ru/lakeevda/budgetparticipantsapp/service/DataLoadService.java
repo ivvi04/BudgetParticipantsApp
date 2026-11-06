@@ -2,7 +2,7 @@ package ru.lakeevda.budgetparticipantsapp.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
+import ru.lakeevda.budgetparticipantsapp.db.PostgresConnection;
 import ru.lakeevda.budgetparticipantsapp.mapper.JsonFlattener;
 
 import java.io.File;
@@ -26,12 +26,12 @@ public class DataLoadService {
 
     private static final int DEFAULT_BATCH_SIZE = 32000;
 
-    private final DatabaseConnection databaseConnection;
+    private final PostgresConnection databaseConnection;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final String table;
 
-    public DataLoadService(DatabaseConnection databaseConnection, String table) {
+    public DataLoadService(PostgresConnection databaseConnection, String table) {
         this.databaseConnection = databaseConnection;
         this.table = table;
     }

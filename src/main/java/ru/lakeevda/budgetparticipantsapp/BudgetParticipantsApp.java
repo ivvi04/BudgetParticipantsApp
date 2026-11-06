@@ -2,7 +2,9 @@ package ru.lakeevda.budgetparticipantsapp;
 
 import ru.lakeevda.budgetparticipantsapp.client.ApiClient;
 import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
+import ru.lakeevda.budgetparticipantsapp.db.ClickHouseConnection;
 import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
+import ru.lakeevda.budgetparticipantsapp.db.PostgresConnection;
 import ru.lakeevda.budgetparticipantsapp.service.ClickHouseTransferService;
 import ru.lakeevda.budgetparticipantsapp.service.DataLoadService;
 import ru.lakeevda.budgetparticipantsapp.service.ZipService;
@@ -44,7 +46,8 @@ public final class BudgetParticipantsApp {
     }
 
     private static void run(LocalDate from, LocalDate to) throws IOException, SQLException {
-        Properties props = ConfigLoader.load();
+        ConfigLoader configLoader = ConfigLoader.getInstance();
+        Properties props = configLoader.load();
 
         String rawDir = props.getProperty("storage.rawDir", "data/raw");
         File dir = new File(rawDir);
@@ -58,23 +61,23 @@ public final class BudgetParticipantsApp {
         List<File> pageFiles =
                 client.fetchAllPages(from, to, dir);
 
-        String url = props.getProperty("db.url");
-        String username = props.getProperty("db.username");
-        String password = props.getProperty("db.password");
-        String table = props.getProperty("db.table");
-        DatabaseConnection connection = new DatabaseConnection(url, username, password);
+        PostgresConnection postgresConnection = PostgresConnection.getInstance();
 
         // 2. Денормализованная загрузка в PostgreSQL (перезапись по ключам периода)
-        DataLoadService db = new DataLoadService(connection, table);
+        DataLoadService db = new DataLoadService(postgresConnection, props.getProperty("postgres.table"));
         db.load(pageFiles, from, to);
 
         // Плюс 2: перенос из PostgreSQL в ClickHouse
+        ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
         ClickHouseTransferService ch = new ClickHouseTransferService(props);
         if (ch.isEnabled(props)) {
-            ch.transfer(url, username, password, table);
+            ch.transfer(props.getProperty("db.url"),
+                    props.getProperty("db.username"),
+                    props.getProperty("db.password"),
+                    props.getProperty("db.table"));
         }
 
         log.info(String.format("Done: %d page file(s), table %s, period %s..%s",
-                pageFiles.size(), table, from, to));
+                pageFiles.size(), props.getProperty("db.table"), from, to));
     }
 }
