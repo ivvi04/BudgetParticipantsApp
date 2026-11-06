@@ -36,10 +36,8 @@ public final class BudgetParticipantsApp {
     public static void main(String[] args) {
         log.info("Starting BudgetParticipantsApp");
         try {
-            LocalDate from =
-                    LocalDate.parse("2024-01-01");
-            LocalDate to =
-                    LocalDate.parse("2024-01-31");
+            LocalDate from = LocalDate.parse(args[0]);
+            LocalDate to = LocalDate.parse(args[1]);
             if (from.isAfter(to)) {
                 log.severe("lastUpdateFrom must not be after lastUpdateTo");
                 System.exit(1);
