@@ -31,7 +31,7 @@ public class ConfigLoader {
             log.info("Configuration loaded from " + PROPERTIES_FILE);
         } catch (IOException e) {
             String message = "Failed to load properties from '" + PROPERTIES_FILE + "'";
-            log.log(Level.SEVERE, message, e);
+            log.log(Level.INFO, message, e);
             throw new RuntimeException(message, e);
         }
     }
@@ -61,7 +61,7 @@ public class ConfigLoader {
             return INSTANCE.properties.getProperty(key);
         } else {
             String message = "Property with key '" + key + "' not found";
-            log.log(Level.SEVERE, message);
+            log.log(Level.INFO, message);
             throw new RuntimeException(message);
         }
     }

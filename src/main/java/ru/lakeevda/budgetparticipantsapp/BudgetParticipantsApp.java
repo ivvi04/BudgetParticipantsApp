@@ -37,10 +37,10 @@ public final class BudgetParticipantsApp {
             }
             run(from, to);
         } catch (DateTimeParseException e) {
-            log.log(Level.SEVERE, "Invalid date format: " + e.getMessage(), e);
+            log.log(Level.INFO, "Invalid date format: " + e.getMessage(), e);
             System.exit(1);
         } catch (Exception e) {
-            log.log(Level.SEVERE, "Failed: " + e.getMessage(), e);
+            log.log(Level.INFO, "Failed: " + e.getMessage(), e);
             System.exit(2);
         }
     }

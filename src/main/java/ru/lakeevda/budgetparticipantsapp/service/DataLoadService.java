@@ -75,7 +75,7 @@ public class DataLoadService {
                 } catch (SQLException e) {
                     throw e;
                 } catch (Exception e) {
-                    log.log(Level.SEVERE, "Cannot parse " + f, e);
+                    log.log(Level.INFO, "Cannot parse " + f, e);
                     throw new SQLException("Cannot parse " + f, e);
                 }
             }
