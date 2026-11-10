@@ -29,9 +29,9 @@ public class ClickHouseConnection implements DatabaseConnection {
      * @throws IllegalStateException если конфигурация некорректна
      */
     private ClickHouseConnection() {
-        this.url = ConfigLoader.getProperty("clickhouse.url");
-        this.username = ConfigLoader.getProperty("clickhouse.username");
-        this.password = ConfigLoader.getProperty("clickhouse.password");
+        this.url = ConfigLoader.getProperty("clickhouse.jdbc.url");
+        this.username = ConfigLoader.getProperty("clickhouse.jdbc.username");
+        this.password = ConfigLoader.getProperty("clickhouse.jdbc.password");
         if (url == null || username == null || password == null) {
             throw new IllegalStateException("Свойства подключения к базе данных заданы некорректно");
         }

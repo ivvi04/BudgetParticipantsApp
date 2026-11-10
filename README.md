@@ -17,7 +17,8 @@ PostgreSQL, при необходимости переносит её в ClickHo
       mapper/JsonFlattener.java       JSON → плоская карта колонок
       mapper/JsonToXmlConverter.java  JSON → XML для архива
       service/DataLoadService.java    запись в PostgreSQL, динамические колонки
-      service/ClickHouseTransferService.java  перенос PG → ClickHouse
+      service/ClickHouseTransferService.java  перенос PG → ClickHouse (JDBC)
+      service/ClickHouseHttpTransferService.java  перенос PG → ClickHouse (HTTP)
       service/ZipService.java         архивация JSON в zip (XML внутри)
     src/main/resources/application.properties
     src/test/java/...                 JUnit 4 тесты
@@ -44,10 +45,17 @@ classpath, файл вне jar не поддерживается):
 | `api.itemsKey` | поле с массивом записей (`data`) |
 | `api.totalPagesKey` | поле с числом страниц (`pageCount`) |
 | `db.table` | имя таблицы для обоих баз |
-| `postgres.url` / `username` / `password` | подключение к PostgreSQL (порт 5433) |
+| `postgres.jdbc.url` | JDBC URL PostgreSQL (порт 5433) |
+| `postgres.jdbc.username` | пользователь PostgreSQL |
+| `postgres.jdbc.password` | пароль PostgreSQL |
 | `storage.rawDir` | каталог для скачанных JSON и zip (`data/raw`) |
-| `clickhouse.enabled` | включён ли перенос в ClickHouse |
-| `clickhouse.url` / `username` / `password` | подключение к ClickHouse |
+| `clickhouse.jdbc.enabled` | включён ли JDBC-перенос в ClickHouse (приоритетный) |
+| `clickhouse.jdbc.url` | JDBC URL ClickHouse |
+| `clickhouse.jdbc.username` | пользователь ClickHouse |
+| `clickhouse.jdbc.password` | пароль ClickHouse |
+| `clickhouse.http.enabled` | включён ли HTTP-перенос в ClickHouse (альтернативный) |
+| `clickhouse.http.url` | URL HTTP API ClickHouse |
+| `clickhouse.http.database` | имя базы данных ClickHouse |
 
 ## Сборка и запуск
 
@@ -90,14 +98,18 @@ classpath, файл вне jar не поддерживается):
    блокировок не растут с размером периода. Если загрузка прервётся, период
    останется загруженным частично, но следующий запуск удалит его и загрузит
    заново.
-4. **Перенос в ClickHouse** — если `clickhouse.enabled=true`: данные копируются
-   в промежуточную таблицу `<table>_staging` (все колонки типа `String`,
-   `ENGINE = MergeTree ORDER BY id`), после чего она атомарно подменяет основную
-   через `EXCHANGE TABLES` (на серверах без его поддержки — переименованием через
-   `<table>_backup`). Поэтому схема всегда соответствует PostgreSQL, повторный
-   перенос не накапливает дубликаты, а при сбое прежние данные ClickHouse
-   остаются нетронутыми. Строки копируются батчами по 5000 (чтение из PG —
-   курсор с fetch size 1000).
+4. **Перенос в ClickHouse** — выбор метода через конфигурацию:
+   - **JDBC-метод** (приоритетный): если `clickhouse.jdbc.enabled=true`,
+     данные копируются из PostgreSQL в промежуточную таблицу
+     `<table>_staging` (все колонки типа `String`,
+     `ENGINE = MergeTree ORDER BY id`), после чего она атомарно подменяет
+     основную через `EXCHANGE TABLES` (на серверах без его поддержки —
+     переименованием через `<table>_backup`).
+   - **HTTP-метод** (альтернативный): если `clickhouse.http.enabled=true`,
+     данные из `data/raw/` загружаются через HTTP API в формате JSON.
+     Аутентификация через заголовок `X-ClickHouse-User`.
+   - Если оба метода отключены, перенос пропускается.
+   - Строки копируются батчами по 5000 (для JDBC).
 5. **Логирование итога**.
 
 ## Денормализация
@@ -153,12 +165,13 @@ WARN, после 1595 новые колонки не добавляются. Т�
 пустые контейнеры), `JsonToXmlConverter` (XML-представление), `DataLoadService`
 (чтение страниц без БД, сборка INSERT/ON CONFLICT, отбор непустых колонок,
 отбрасывание записей, которым не хватает колонок, и предупреждение по каждой
-такой записи), `ClickHouseTransferService`
-(сборка DDL и SQL, экранирование), `ConfigLoader` (чтение и значение
-по умолчанию), `BudgetParticipantsApp` (валидация периода), `ZipService`
-(архивация/удаление/невалидный JSON, имя архива по периоду из имени файла,
-`archive_other.zip` для имён вне шаблона, повторная архивация без потери
-записей и без дубликатов, сохранение исходника при ошибке записи архива).
+такой записи), `ClickHouseTransferService` (сборка DDL и SQL, экранирование),
+`ClickHouseHttpTransferService` (форматирование JSON для HTTP API, аутентификация),
+`ConfigLoader` (чтение и значение по умолчанию), `BudgetParticipantsApp`
+(валидация периода), `ZipService` (архивация/удаление/невалидный JSON, имя
+архива по периоду из имени файла, `archive_other.zip` для имён вне шаблона,
+повторная архивация без потери записей и без дубликатов, сохранение исходника
+при ошибке записи архива).
 
 ## Известные проблемы
 

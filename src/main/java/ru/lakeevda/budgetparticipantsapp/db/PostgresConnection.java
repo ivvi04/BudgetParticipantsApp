@@ -29,9 +29,9 @@ public class PostgresConnection implements DatabaseConnection {
      * @throws IllegalStateException если конфигурация некорректна
      */
     private PostgresConnection() {
-        this.url = ConfigLoader.getProperty("postgres.url");
-        this.username = ConfigLoader.getProperty("postgres.username");
-        this.password = ConfigLoader.getProperty("postgres.password");
+        this.url = ConfigLoader.getProperty("postgres.jdbc.url");
+        this.username = ConfigLoader.getProperty("postgres.jdbc.username");
+        this.password = ConfigLoader.getProperty("postgres.jdbc.password");
         if (url == null || username == null || password == null) {
             throw new IllegalStateException("Свойства подключения к базе данных заданы некорректно");
         }

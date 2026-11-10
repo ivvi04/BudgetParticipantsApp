@@ -3,7 +3,9 @@ package ru.lakeevda.budgetparticipantsapp;
 import ru.lakeevda.budgetparticipantsapp.client.ApiClient;
 import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import ru.lakeevda.budgetparticipantsapp.db.ClickHouseConnection;
+import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
 import ru.lakeevda.budgetparticipantsapp.db.PostgresConnection;
+import ru.lakeevda.budgetparticipantsapp.service.ClickHouseHttpTransferService;
 import ru.lakeevda.budgetparticipantsapp.service.ClickHouseTransferService;
 import ru.lakeevda.budgetparticipantsapp.service.DataLoadService;
 import ru.lakeevda.budgetparticipantsapp.service.ZipService;
@@ -94,15 +96,45 @@ public final class BudgetParticipantsApp {
         DataLoadService dataLoadService = new DataLoadService(postgresConnection);
         dataLoadService.load(pageFiles, from, to);
 
-        // Подключение к ClickHouse.
-        ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
-        ClickHouseTransferService clickHouseTransferService =
-                new ClickHouseTransferService(clickHouseConnection, postgresConnection);
-        if (clickHouseTransferService.isEnabled()) {
-            clickHouseTransferService.transfer();
-        }
+        clickHouseTransfer(rawDir, from, to, postgresConnection);
 
         log.info(String.format("Готово: файлов страниц %d, таблица %s, период %s..%s",
                 pageFiles.size(), ConfigLoader.getProperty("db.table"), from, to));
+    }
+
+    /**
+     * Перенос в ClickHouse
+     *
+     * @param rawDir             директория для хранения сырых данных
+     * @param from               начальная дата периода
+     * @param to                 конечная дата периода
+     * @param postgresConnection подключение к PostgreSQL
+     * @throws IOException  при ошибках ввода-вывода
+     * @throws SQLException при ошибках работы с БД
+     */
+    private static void clickHouseTransfer(String rawDir,
+                                           LocalDate from, LocalDate to,
+                                           DatabaseConnection postgresConnection) throws IOException, SQLException {
+        if (Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.jdbc.enabled", "false"))) {
+            // JDBC-перенос (приоритетный)
+            ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
+            ClickHouseTransferService clickHouseTransferService =
+                    new ClickHouseTransferService(clickHouseConnection, postgresConnection);
+            if (clickHouseTransferService.isEnabled()) {
+                clickHouseTransferService.transfer();
+            }
+        } else if (Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.http.enabled", "false"))) {
+            // HTTP-перенос (альтернативный)
+            String httpUrl = ConfigLoader.getProperty("clickhouse.http.url", "http://localhost:8123");
+            String httpDatabase = ConfigLoader.getProperty("clickhouse.http.database", "default");
+            ClickHouseHttpTransferService clickHouseHttpTransferService =
+                    new ClickHouseHttpTransferService(httpUrl, httpDatabase,
+                            ConfigLoader.getProperty("db.table"), rawDir);
+            if (clickHouseHttpTransferService.isEnabled()) {
+                clickHouseHttpTransferService.transfer(from, to);
+            }
+        } else {
+            log.info("Перенос в ClickHouse отключён");
+        }
     }
 }
