@@ -43,17 +43,16 @@ classpath, файл вне jar не поддерживается):
 | `api.dateFormat` | формат дат в URL (`dd.MM.yyyy`) |
 | `api.itemsKey` | поле с массивом записей (`data`) |
 | `api.totalPagesKey` | поле с числом страниц (`pageCount`) |
+| `db.table` | имя таблицы для обоих баз |
 | `postgres.url` / `username` / `password` | подключение к PostgreSQL (порт 5433) |
-| `postgres.table` | имя денормализованной таблицы |
 | `storage.rawDir` | каталог для скачанных JSON и zip (`data/raw`) |
 | `clickhouse.enabled` | включён ли перенос в ClickHouse |
 | `clickhouse.url` / `user` / `password` | подключение к ClickHouse |
-| `clickhouse.table` | имя таблицы в ClickHouse |
 
 ## Сборка и запуск
 
     mvn clean package
-    java -jar target/data-loader-1.0.0-jar-with-dependencies.jar 2024-01-01 2024-01-31
+    java "-Dfile.encoding=UTF-8" -jar target/data-loader-1.0.0-jar-with-dependencies.jar 2024-01-01 2024-01-31
 
 Обязательные аргументы: `lastUpdateFrom` и `lastUpdateTo` в формате ISO
 (`yyyy-MM-dd`), иначе приложение завершается с ошибкой. Если `from > to`,
@@ -111,10 +110,5 @@ WARN, после 1595 новые колонки не добавляются, а 
 
 ## Известные проблемы
 
-- `ClickHouseConnection` читает ключ `clickhouse.username`, а в
-  `application.properties` он называется `clickhouse.user`; перенос в
-  ClickHouse из-за этого падает при инициализации.
-- `BudgetParticipantsApp` использует несуществующий ключ `db.table` вместо
-  `postgres.table` (и при переносе, и в итоговом логе).
 - `ZipService` дописывает архив (`FileOutputStream(..., true)`): при повторной
   архивации за тот же период в zip могут появиться дубликаты записей.

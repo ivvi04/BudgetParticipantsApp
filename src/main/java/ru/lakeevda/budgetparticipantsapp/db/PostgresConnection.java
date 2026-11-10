@@ -5,7 +5,6 @@ import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,7 +17,7 @@ import java.util.logging.Logger;
  */
 public class PostgresConnection implements DatabaseConnection {
 
-    private static final Logger logger = Logger.getLogger(PostgresConnection.class.getName());
+    private static final Logger log = Logger.getLogger(PostgresConnection.class.getName());
     private static final PostgresConnection INSTANCE = new PostgresConnection();
 
     private final String url;
@@ -35,7 +34,7 @@ public class PostgresConnection implements DatabaseConnection {
         this.username = ConfigLoader.getProperty("postgres.username");
         this.password = ConfigLoader.getProperty("postgres.password");
         if (url == null || username == null || password == null) {
-            throw new IllegalStateException("Database connection properties are not set correctly");
+            throw new IllegalStateException("Свойства подключения к базе данных заданы некорректно");
         }
     }
 
@@ -66,7 +65,7 @@ public class PostgresConnection implements DatabaseConnection {
      */
     @Override
     public Connection getConnection() throws SQLException {
-        logger.log(Level.INFO, "Opening database connection to %s as user %s", new Object[]{url, username});
+        log.info(String.format("Открытие подключения к базе данных %s под пользователем %s", url, username));
         return DriverManager.getConnection(url, username, password);
     }
 }

@@ -5,7 +5,6 @@ import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,7 +17,7 @@ import java.util.logging.Logger;
  */
 public class ClickHouseConnection implements DatabaseConnection {
 
-    private static final Logger logger = Logger.getLogger(ClickHouseConnection.class.getName());
+    private static final Logger log = Logger.getLogger(ClickHouseConnection.class.getName());
     private static final ClickHouseConnection INSTANCE = new ClickHouseConnection();
 
     private final String url;
@@ -35,7 +34,7 @@ public class ClickHouseConnection implements DatabaseConnection {
         this.username = ConfigLoader.getProperty("clickhouse.username");
         this.password = ConfigLoader.getProperty("clickhouse.password");
         if (url == null || username == null || password == null) {
-            throw new IllegalStateException("Database connection properties are not set correctly");
+            throw new IllegalStateException("Свойства подключения к базе данных заданы некорректно");
         }
     }
 
@@ -66,7 +65,12 @@ public class ClickHouseConnection implements DatabaseConnection {
      */
     @Override
     public Connection getConnection() throws SQLException {
-        logger.log(Level.INFO, "Opening database connection to %s as user %s", new Object[]{url, username});
+        log.info(String.format("Открытие подключения к базе данных %s под пользователем %s", url, username));
+        try {
+            Class.forName("com.clickhouse.jdbc.ClickHouseDriver");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("Драйвер JDBC ClickHouse отсутствует в classpath", e);
+        }
         return DriverManager.getConnection(url, username, password);
     }
 }

@@ -39,10 +39,10 @@ public final class ZipService {
      * @throws IOException при ошибках работы с файловой системой
      */
     public static void zipPreviousRuns(File rawDir, LocalDate from, LocalDate to) throws IOException {
-        log.info(String.format("Archiving previous runs for period %s..%s", from, to));
+        log.info(String.format("Архивация результатов прошлых запусков за период %s..%s", from, to));
         File[] files = rawDir.listFiles((d, name) -> name.endsWith(".json"));
         if (files == null || files.length == 0) {
-            log.info("Nothing from previous runs to archive");
+            log.info("Нет данных прошлых запусков для архивации");
             return;
         }
         File zip = new File(rawDir, String.format(ARCHIVE_ZIP_FORMAT, from, to));
@@ -58,13 +58,13 @@ public final class ZipService {
                     zos.closeEntry();
                     archived++;
                 } catch (Exception e) {
-                    log.log(Level.WARNING, "Cannot convert to xml, keeping json: " + f.getName()
+                    log.log(Level.WARNING, "Не удалось конвертировать в XML, JSON-файл сохранён: " + f.getName()
                             + " (" + e.getMessage() + ")", e);
                     continue;
                 }
-                if (!f.delete()) throw new IOException("Cannot delete " + f);
+                if (!f.delete()) throw new IOException("Не удалось удалить " + f);
             }
         }
-        log.info("Archived " + archived + " xml file(s) into " + zip.getName());
+        log.info("Архивировано XML-файлов: " + archived + " в " + zip.getName());
     }
 }

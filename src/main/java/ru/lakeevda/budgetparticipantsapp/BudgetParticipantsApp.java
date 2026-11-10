@@ -34,20 +34,20 @@ public final class BudgetParticipantsApp {
      * @param args аргументы командной строки (формат дат: yyyy-MM-dd)
      */
     public static void main(String[] args) {
-        log.info("Starting BudgetParticipantsApp");
+        log.info("Запуск BudgetParticipantsApp");
         try {
             LocalDate from = LocalDate.parse(args[0]);
             LocalDate to = LocalDate.parse(args[1]);
             if (from.isAfter(to)) {
-                log.severe("lastUpdateFrom must not be after lastUpdateTo");
+                log.severe("Дата lastUpdateFrom не может быть позже lastUpdateTo");
                 System.exit(1);
             }
             run(from, to);
         } catch (DateTimeParseException e) {
-            log.log(Level.INFO, "Invalid date format: " + e.getMessage(), e);
+            log.log(Level.INFO, "Некорректный формат даты: " + e.getMessage(), e);
             System.exit(1);
         } catch (Exception e) {
-            log.log(Level.INFO, "Failed: " + e.getMessage(), e);
+            log.log(Level.INFO, "Ошибка выполнения: " + e.getMessage(), e);
             System.exit(2);
         }
     }
@@ -94,7 +94,7 @@ public final class BudgetParticipantsApp {
             clickHouseTransferService.transfer();
         }
 
-        log.info(String.format("Done: %d page file(s), table %s, period %s..%s",
+        log.info(String.format("Готово: файлов страниц %d, таблица %s, период %s..%s",
                 pageFiles.size(), ConfigLoader.getProperty("db.table"), from, to));
     }
 }

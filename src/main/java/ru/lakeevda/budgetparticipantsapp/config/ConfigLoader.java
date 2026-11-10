@@ -33,12 +33,12 @@ public class ConfigLoader {
         this.properties = new Properties();
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(PROPERTIES_FILE)) {
             if (is == null) {
-                throw new IllegalStateException("Properties file '" + PROPERTIES_FILE + "' not found in classpath");
+                throw new IllegalStateException("Файл свойств '" + PROPERTIES_FILE + "' не найден в classpath");
             }
             this.properties.load(is);
-            log.info("Configuration loaded from " + PROPERTIES_FILE);
+            log.info("Конфигурация загружена из " + PROPERTIES_FILE);
         } catch (IOException e) {
-            String message = "Failed to load properties from '" + PROPERTIES_FILE + "'";
+            String message = "Не удалось загрузить свойства из '" + PROPERTIES_FILE + "'";
             log.log(Level.SEVERE, message, e);
             throw new RuntimeException(message, e);
         }
@@ -82,7 +82,7 @@ public class ConfigLoader {
         if (INSTANCE.properties.containsKey(key)) {
             return INSTANCE.properties.getProperty(key);
         } else {
-            String message = "Property with key '" + key + "' not found";
+            String message = "Свойство с ключом '" + key + "' не найдено";
             log.log(Level.INFO, message);
             throw new RuntimeException(message);
         }

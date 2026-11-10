@@ -22,8 +22,7 @@ public class ClickHouseTransferService {
 
     private final DatabaseConnection chConnection;
     private final DatabaseConnection pgConnection;
-    private final String chTable;
-    private final String pgTable;
+    private final String table;
 
     /**
      * Конструктор сервиса переноса в ClickHouse.
@@ -34,8 +33,7 @@ public class ClickHouseTransferService {
                                      DatabaseConnection pgConnection) {
         this.chConnection = chConnection;
         this.pgConnection = pgConnection;
-        this.chTable = ConfigLoader.getProperty("clickhouse.table");
-        this.pgTable = ConfigLoader.getProperty("postgres.table");
+        this.table = ConfigLoader.getProperty("db.table");
     }
 
     /**
@@ -54,14 +52,14 @@ public class ClickHouseTransferService {
      */
     public void transfer()
             throws SQLException {
-        log.info("Starting transfer from PostgreSQL to ClickHouse");
+        log.info("Запуск переноса данных из PostgreSQL в ClickHouse");
         try (Connection pg = pgConnection.getConnection();
              Connection ch = chConnection.getConnection()) {
 
             List<String> columns = readPgColumns(pg);
             ensureChTable(ch, columns);
             long copied = copyRows(pg, ch, columns);
-            log.info("ClickHouse: transferred " + copied + " row(s) into " + chTable);
+            log.info("ClickHouse: перенесено строк: " + copied + " в таблицу " + table);
         }
     }
 
@@ -74,10 +72,10 @@ public class ClickHouseTransferService {
      */
     private List<String> readPgColumns(Connection pg) throws SQLException {
         List<String> cols = new ArrayList<>();
-        try (ResultSet rs = pg.getMetaData().getColumns(null, null, pgTable.toLowerCase(), null)) {
+        try (ResultSet rs = pg.getMetaData().getColumns(null, null, table.toLowerCase(), null)) {
             while (rs.next()) cols.add(rs.getString("COLUMN_NAME"));
         }
-        if (cols.isEmpty()) throw new SQLException("No columns found in PostgreSQL table " + pgTable);
+        if (cols.isEmpty()) throw new SQLException("В таблице PostgreSQL " + table + " не найдено колонок");
         return cols;
     }
 
@@ -89,7 +87,7 @@ public class ClickHouseTransferService {
      * @throws SQLException при ошибках
      */
     private void ensureChTable(Connection ch, List<String> columns) throws SQLException {
-        StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS " + chTable + " (");
+        StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS " + table + " (");
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) ddl.append(", ");
             // Все значения денормализованной таблицы text -> String в ClickHouse
@@ -98,7 +96,7 @@ public class ClickHouseTransferService {
         ddl.append(") ENGINE = MergeTree ORDER BY id");
         try (Statement st = ch.createStatement()) {
             st.execute(ddl.toString());
-            log.fine("ClickHouse table ensured: " + chTable);
+            log.fine("Таблица ClickHouse готова: " + table);
         }
     }
 
@@ -112,19 +110,25 @@ public class ClickHouseTransferService {
      * @throws SQLException при ошибках
      */
     private long copyRows(Connection pg, Connection ch, List<String> columns) throws SQLException {
-        StringJoiner names = new StringJoiner(", ");
+        // PostgreSQL: идентификаторы в двойных кавычках
+        StringJoiner pgNames = new StringJoiner(", ");
+        for (String col : columns) {
+            pgNames.add("\"" + col + "\"");
+        }
+        // ClickHouse: идентификаторы в бэктиках (или без кавычек вовсе)
+        StringJoiner chNames = new StringJoiner(", ");
         StringBuilder placeholders = new StringBuilder();
         for (int i = 0; i < columns.size(); i++) {
-            names.add('`' + columns.get(i) + '`');
+            chNames.add('`' + columns.get(i) + '`');
             placeholders.append(i == 0 ? "?" : ", ?");
         }
 
         long count = 0;
         try (Statement read = pg.createStatement()) {
             read.setFetchSize(1000);
-            try (ResultSet rs = read.executeQuery("SELECT " + names + " FROM " + pgTable);
+            try (ResultSet rs = read.executeQuery("SELECT " + pgNames + " FROM " + table);
                  PreparedStatement ins = ch.prepareStatement(
-                         "INSERT INTO " + chTable + " (" + names + ") VALUES ("
+                         "INSERT INTO " + table + " (" + chNames + ") VALUES ("
                                  + placeholders + ")")) {
 
                 // Пустые значения денормализованной таблицы пишем пустой строкой:

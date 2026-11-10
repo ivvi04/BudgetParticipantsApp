@@ -18,7 +18,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 import java.util.logging.Logger;
 
 /**
@@ -31,6 +30,12 @@ import java.util.logging.Logger;
 public class ApiClient {
 
     private static final Logger log = Logger.getLogger(ApiClient.class.getName());
+
+    /** Общее число страниц ещё неизвестно. */
+    private static final int UNKNOWN_TOTAL_PAGES = -1;
+
+    /** API сообщил, что за период страниц нет. */
+    private static final int NO_PAGES = 0;
 
     private final String urlTemplate;
     private final String itemsKey;
@@ -61,51 +66,171 @@ public class ApiClient {
      * @throws IOException при ошибках сети или файловой системы
      */
     public List<File> fetchAllPages(LocalDate from, LocalDate to, File rawDir) throws IOException {
-        log.info(String.format("Fetching all pages for period %s..%s", from, to));
-        List<File> result = new ArrayList<>();
+        log.info(String.format("Скачивание всех страниц за период %s..%s", from, to));
+        List<File> pages;
         try (CloseableHttpClient http = HttpClients.createDefault()) {
-            int page = 1;
-            int totalPages = -1; // неизвестно, пока не спарсим первый ответ
-            while (true) {
-                URI uri = URI.create(String.format(urlTemplate,
-                        dateFormat.format(from), dateFormat.format(to), page));
-                HttpGet get = new HttpGet(uri);
-                try (CloseableHttpResponse resp = http.execute(get)) {
-                    int status = resp.getStatusLine().getStatusCode();
-                    if (status != 200) {
-                        throw new IOException("HTTP " + status + " for " + uri);
-                    }
-                    String body = EntityUtils.toString(resp.getEntity(), StandardCharsets.UTF_8);
-                    JsonNode root = mapper.readTree(body);
-
-                    JsonNode items = pickItems(root);
-                    if (totalPages < 0 && !totalPagesKey.isEmpty()) {
-                        JsonNode tp = root.get(totalPagesKey);
-                        totalPages = (tp != null && tp.isInt()) ? tp.asInt() : Integer.MAX_VALUE;
-                        if (totalPages <= 0) {
-                            log.info("No pages for the period (pageCount="
-                                    + (tp == null ? "null" : tp.asText()) + ")");
-                            break;
-                        }
-                    }
-
-                    File out = new File(rawDir,
-                            String.format("page_%s_%s_%05d.json", from, to, page));
-                    Files.write(out.toPath(), body.getBytes(StandardCharsets.UTF_8));
-                    result.add(out);
-                    log.info("Downloaded: " + out.getName()
-                            + " (" + items.size() + " records, page " + page
-                            + (totalPages > 0 ? "/" + totalPages : "") + ")");
-
-                    // Условия остановки пагинации
-                    if (totalPages > 0 && page >= totalPages) break;
-                    if (totalPages < 0 && items.size() == 0) break;
-                    page++;
-                }
-            }
+            pages = fetchPages(http, from, to, rawDir);
         }
-        log.info("Total pages downloaded: " + result.size());
-        return result;
+        log.info("Всего скачано страниц: " + pages.size());
+        return pages;
+    }
+
+    /**
+     * Выполняет пагинацию: скачивает страницы, пока не будет достигнута последняя.
+     *
+     * @param http   HTTP-клиент
+     * @param from   начальная дата периода
+     * @param to     конечная дата периода
+     * @param rawDir директория для хранения сырых файлов
+     * @return список скачанных файлов
+     * @throws IOException при ошибках сети или файловой системы
+     */
+    private List<File> fetchPages(CloseableHttpClient http, LocalDate from, LocalDate to,
+                                  File rawDir) throws IOException {
+        List<File> files = new ArrayList<>();
+        int page = 1;
+        int totalPages = UNKNOWN_TOTAL_PAGES;
+        boolean totalPagesResolved = false;
+
+        while (true) {
+            URI uri = buildPageUri(from, to, page);
+            String body = downloadPage(http, uri);
+            JsonNode root = mapper.readTree(body);
+            JsonNode items = pickItems(root);
+
+            if (!totalPagesResolved) {
+                totalPages = resolveTotalPages(root);
+                totalPagesResolved = true;
+            }
+            if (totalPages == NO_PAGES) {
+                break;
+            }
+
+            File out = savePage(rawDir, from, to, page, body);
+            files.add(out);
+            logDownloaded(out, items, page, totalPages);
+
+            if (shouldStopPagination(page, totalPages, items)) {
+                break;
+            }
+            page++;
+        }
+        return files;
+    }
+
+    /**
+     * Скачивает одну страницу API и возвращает тело ответа.
+     *
+     * @param http HTTP-клиент
+     * @param uri  адрес страницы
+     * @return тело ответа в виде строки
+     * @throws IOException при ошибках сети или при HTTP-статусе, отличном от 200
+     */
+    private String downloadPage(CloseableHttpClient http, URI uri) throws IOException {
+        HttpGet get = new HttpGet(uri);
+        try (CloseableHttpResponse resp = http.execute(get)) {
+            int status = resp.getStatusLine().getStatusCode();
+            if (status != 200) {
+                throw new IOException("HTTP-статус " + status + " для " + uri);
+            }
+            return EntityUtils.toString(resp.getEntity(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Формирует адрес страницы по шаблону из конфигурации.
+     *
+     * @param from начальная дата периода
+     * @param to   конечная дата периода
+     * @param page номер страницы
+     * @return адрес страницы
+     */
+    private URI buildPageUri(LocalDate from, LocalDate to, int page) {
+        return URI.create(String.format(urlTemplate,
+                dateFormat.format(from), dateFormat.format(to), page));
+    }
+
+    /**
+     * Определяет общее число страниц по ответу API.
+     * Если ключ не задан в конфигурации, возвращает {@link #UNKNOWN_TOTAL_PAGES}.
+     *
+     * @param root корневой узел JSON
+     * @return общее число страниц, {@link #NO_PAGES}, если страниц нет,
+     *         либо {@link Integer#MAX_VALUE}, если значение не найдено или не является числом
+     */
+    private int resolveTotalPages(JsonNode root) {
+        if (totalPagesKey.isEmpty()) {
+            return UNKNOWN_TOTAL_PAGES;
+        }
+        JsonNode totalPagesNode = root.get(totalPagesKey);
+        if (totalPagesNode == null || !totalPagesNode.isInt()) {
+            return Integer.MAX_VALUE;
+        }
+        int totalPages = totalPagesNode.asInt();
+        if (totalPages <= 0) {
+            log.info("За период страниц нет (pageCount=" + totalPagesNode.asText() + ")");
+            return NO_PAGES;
+        }
+        return totalPages;
+    }
+
+    /**
+     * Сохраняет тело ответа страницы в файл.
+     *
+     * @param rawDir директория для хранения сырых файлов
+     * @param from   начальная дата периода
+     * @param to     конечная дата периода
+     * @param page   номер страницы
+     * @param body   тело ответа
+     * @return сохранённый файл
+     * @throws IOException при ошибках записи файла
+     */
+    private File savePage(File rawDir, LocalDate from, LocalDate to, int page,
+                          String body) throws IOException {
+        File out = new File(rawDir, pageFileName(from, to, page));
+        Files.write(out.toPath(), body.getBytes(StandardCharsets.UTF_8));
+        return out;
+    }
+
+    /**
+     * Формирует имя файла страницы.
+     *
+     * @param from начальная дата периода
+     * @param to   конечная дата периода
+     * @param page номер страницы
+     * @return имя файла
+     */
+    private static String pageFileName(LocalDate from, LocalDate to, int page) {
+        return String.format("page_%s_%s_%05d.json", from, to, page);
+    }
+
+    /**
+     * Пишет в лог информацию о скачанной странице.
+     *
+     * @param out        сохранённый файл
+     * @param items      массив записей страницы
+     * @param page       номер страницы
+     * @param totalPages общее число страниц
+     */
+    private void logDownloaded(File out, JsonNode items, int page, int totalPages) {
+        log.info("Скачано: " + out.getName()
+                + " (записей: " + items.size() + ", страница " + page
+                + (totalPages > 0 ? "/" + totalPages : "") + ")");
+    }
+
+    /**
+     * Проверяет, нужно ли остановить пагинацию.
+     *
+     * @param page       номер текущей страницы
+     * @param totalPages общее число страниц
+     * @param items      массив записей текущей страницы
+     * @return {@code true}, если пагинацию следует остановить
+     */
+    private static boolean shouldStopPagination(int page, int totalPages, JsonNode items) {
+        if (totalPages > 0 && page >= totalPages) {
+            return true;
+        }
+        return totalPages < 0 && items.isEmpty();
     }
 
     /**
@@ -120,7 +245,7 @@ public class ApiClient {
         if (!itemsKey.isEmpty()) {
             JsonNode node = root.get(itemsKey);
             if (node == null || !node.isArray()) {
-                throw new IllegalStateException("Field '" + itemsKey + "' not found or not array");
+                throw new IllegalStateException("Поле '" + itemsKey + "' не найдено или не является массивом");
             }
             return node;
         }
@@ -128,6 +253,6 @@ public class ApiClient {
         for (JsonNode f : root) {
             if (f.isArray()) return f;
         }
-        throw new IllegalStateException("No array of records in response");
+        throw new IllegalStateException("В ответе нет массива записей");
     }
 }
