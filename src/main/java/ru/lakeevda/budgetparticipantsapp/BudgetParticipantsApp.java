@@ -65,33 +65,33 @@ public final class BudgetParticipantsApp {
      * @throws SQLException при ошибках работы с БД
      */
     private static void run(LocalDate from, LocalDate to) throws IOException, SQLException {
-        /** Директория для хранения сырых данных. */
+        // Директория для хранения сырых данных.
         String rawDir = ConfigLoader.getProperty("storage.rawDir", "data/raw");
         File dir = new File(rawDir);
-        if (!dir.exists()) dir.mkdirs();
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
 
-        /** Архивирует прошлые запуски. */
+        // Архивирует прошлые запуски.
         ZipService.zipPreviousRuns(dir, from, to);
 
-        /** Скачивает все страницы API. */
-        ApiClient client = new ApiClient();
-        List<File> pageFiles =
-                client.fetchAllPages(from, to, dir);
+        // Скачивает все страницы API.
+        ApiClient apiClient = new ApiClient();
+        List<File> pageFiles = apiClient.fetchAllPages(from, to, dir);
 
-        /** Подключение к PostgreSQL. */
+        // Подключение к PostgreSQL.
         PostgresConnection postgresConnection = PostgresConnection.getInstance();
 
-        /** Загружает данные в PostgreSQL. */
-        DataLoadService db = new DataLoadService(postgresConnection,
-                ConfigLoader.getProperty("postgres.table"));
-        db.load(pageFiles, from, to);
+        // Загружает данные в PostgreSQL.
+        DataLoadService dataLoadService = new DataLoadService(postgresConnection);
+        dataLoadService.load(pageFiles, from, to);
 
-        /** Подключение к ClickHouse. */
+        // Подключение к ClickHouse.
         ClickHouseConnection clickHouseConnection = ClickHouseConnection.getInstance();
-        ClickHouseTransferService ch = new ClickHouseTransferService(clickHouseConnection,
-                ConfigLoader.getProperty("clickhouse.table"));
-        if (ch.isEnabled()) {
-            ch.transfer(postgresConnection, ConfigLoader.getProperty("db.table"));
+        ClickHouseTransferService clickHouseTransferService =
+                new ClickHouseTransferService(clickHouseConnection, postgresConnection);
+        if (clickHouseTransferService.isEnabled()) {
+            clickHouseTransferService.transfer();
         }
 
         log.info(String.format("Done: %d page file(s), table %s, period %s..%s",

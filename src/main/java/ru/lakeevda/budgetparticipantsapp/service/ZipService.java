@@ -23,6 +23,7 @@ public final class ZipService {
 
     private static final Logger log = Logger.getLogger(ZipService.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String ARCHIVE_ZIP_FORMAT = "archive_%s_%s.zip";
 
     /** Частный конструктор. */
     private ZipService() {
@@ -44,7 +45,7 @@ public final class ZipService {
             log.info("Nothing from previous runs to archive");
             return;
         }
-        File zip = new File(rawDir, String.format("archive_%s_%s.zip", from, to));
+        File zip = new File(rawDir, String.format(ARCHIVE_ZIP_FORMAT, from, to));
         int archived = 0;
         try (ZipOutputStream zos = new ZipOutputStream(
                 new BufferedOutputStream(new FileOutputStream(zip, true)))) {

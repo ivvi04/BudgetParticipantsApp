@@ -2,6 +2,7 @@ package ru.lakeevda.budgetparticipantsapp.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import ru.lakeevda.budgetparticipantsapp.db.PostgresConnection;
 import ru.lakeevda.budgetparticipantsapp.mapper.JsonFlattener;
 
@@ -35,11 +36,10 @@ public class DataLoadService {
      * Конструктор сервиса загрузки данных.
      *
      * @param databaseConnection подключение к базе данных
-     * @param table имя таблицы для загрузки
      */
-    public DataLoadService(PostgresConnection databaseConnection, String table) {
+    public DataLoadService(PostgresConnection databaseConnection) {
         this.databaseConnection = databaseConnection;
-        this.table = table;
+        this.table = ConfigLoader.getProperty("postgres.table");
     }
 
     /**
@@ -54,10 +54,10 @@ public class DataLoadService {
     public void load(List<File> pageFiles, LocalDate from, LocalDate to) throws SQLException {
         log.info(String.format("Starting data load for period %s..%s, %d files", from, to, pageFiles.size()));
         
-        try (Connection conn = databaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
+        try (Connection connection = databaseConnection.getConnection()) {
+            connection.setAutoCommit(false);
 
-            ensureTable(conn);
+            ensureTable(connection);
 
             // Собираем все колонки, которые встречаются в скачанных данных
             Set<String> allCols = new TreeSet<>();
@@ -87,11 +87,11 @@ public class DataLoadService {
                 }
             }
 
-            Set<String> tableCols = addMissingColumns(conn, allCols);
-            deleteByPeriod(conn, from, to);
-            insertRows(conn, rows, tableCols);
+            Set<String> tableCols = addMissingColumns(connection, allCols);
+            deleteByPeriod(connection, from, to);
+            insertRows(connection, rows, tableCols);
 
-            conn.commit();
+            connection.commit();
             log.info("Data load completed successfully");
         }
     }

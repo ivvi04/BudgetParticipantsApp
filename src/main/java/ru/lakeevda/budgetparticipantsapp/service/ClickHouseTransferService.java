@@ -6,7 +6,6 @@ import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.logging.Logger;
 
@@ -21,18 +20,22 @@ public class ClickHouseTransferService {
 
     private static final Logger log = Logger.getLogger(ClickHouseTransferService.class.getName());
 
-    private final DatabaseConnection clickHouseConnection;
+    private final DatabaseConnection chConnection;
+    private final DatabaseConnection pgConnection;
     private final String chTable;
+    private final String pgTable;
 
     /**
      * Конструктор сервиса переноса в ClickHouse.
      *
-     * @param clickHouseConnection подключение к ClickHouse
-     * @param table имя таблицы в ClickHouse
+     * @param chConnection подключение к ClickHouse
      */
-    public ClickHouseTransferService(DatabaseConnection clickHouseConnection, String table) {
-        this.clickHouseConnection = clickHouseConnection;
-        this.chTable = table;
+    public ClickHouseTransferService(DatabaseConnection chConnection,
+                                     DatabaseConnection pgConnection) {
+        this.chConnection = chConnection;
+        this.pgConnection = pgConnection;
+        this.chTable = ConfigLoader.getProperty("clickhouse.table");
+        this.pgTable = ConfigLoader.getProperty("postgres.table");
     }
 
     /**
@@ -47,19 +50,17 @@ public class ClickHouseTransferService {
     /**
      * Переносит данные из PostgreSQL в ClickHouse.
      *
-     * @param postgresConnection подключение к PostgreSQL
-     * @param postgresTable имя таблицы PostgreSQL
      * @throws SQLException при ошибках работы с БД
      */
-    public void transfer(DatabaseConnection postgresConnection, String postgresTable)
+    public void transfer()
             throws SQLException {
         log.info("Starting transfer from PostgreSQL to ClickHouse");
-        try (Connection pg = postgresConnection.getConnection();
-             Connection ch = clickHouseConnection.getConnection()) {
+        try (Connection pg = pgConnection.getConnection();
+             Connection ch = chConnection.getConnection()) {
 
-            List<String> columns = readPgColumns(pg, postgresTable);
+            List<String> columns = readPgColumns(pg);
             ensureChTable(ch, columns);
-            long copied = copyRows(pg, ch, postgresTable, columns);
+            long copied = copyRows(pg, ch, columns);
             log.info("ClickHouse: transferred " + copied + " row(s) into " + chTable);
         }
     }
@@ -68,16 +69,15 @@ public class ClickHouseTransferService {
      * Читает список колонок из PostgreSQL таблицы.
      *
      * @param pg подключение к PostgreSQL
-     * @param table имя таблицы
      * @return список имён колонок
      * @throws SQLException при ошибках
      */
-    private List<String> readPgColumns(Connection pg, String table) throws SQLException {
+    private List<String> readPgColumns(Connection pg) throws SQLException {
         List<String> cols = new ArrayList<>();
-        try (ResultSet rs = pg.getMetaData().getColumns(null, null, table.toLowerCase(), null)) {
+        try (ResultSet rs = pg.getMetaData().getColumns(null, null, pgTable.toLowerCase(), null)) {
             while (rs.next()) cols.add(rs.getString("COLUMN_NAME"));
         }
-        if (cols.isEmpty()) throw new SQLException("No columns found in PostgreSQL table " + table);
+        if (cols.isEmpty()) throw new SQLException("No columns found in PostgreSQL table " + pgTable);
         return cols;
     }
 
@@ -107,13 +107,11 @@ public class ClickHouseTransferService {
      *
      * @param pg подключение к PostgreSQL
      * @param ch подключение к ClickHouse
-     * @param pgTable имя таблицы в PostgreSQL
      * @param columns список колонок
      * @return количество скопированных строк
      * @throws SQLException при ошибках
      */
-    private long copyRows(Connection pg, Connection ch, String pgTable,
-                          List<String> columns) throws SQLException {
+    private long copyRows(Connection pg, Connection ch, List<String> columns) throws SQLException {
         StringJoiner names = new StringJoiner(", ");
         StringBuilder placeholders = new StringBuilder();
         for (int i = 0; i < columns.size(); i++) {

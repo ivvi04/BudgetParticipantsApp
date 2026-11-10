@@ -19,8 +19,6 @@ import java.util.logging.Logger;
  */
 public final class JsonFlattener {
 
-    private static final Logger log = Logger.getLogger(JsonFlattener.class.getName());
-
     /** Частный конструктор. */
     private JsonFlattener() {
     }

@@ -23,8 +23,6 @@ import java.util.logging.Logger;
  */
 public final class JsonToXmlConverter {
 
-    private static final Logger log = Logger.getLogger(JsonToXmlConverter.class.getName());
-
     /** Частный конструктор. */
     private JsonToXmlConverter() {
     }
@@ -66,8 +64,7 @@ public final class JsonToXmlConverter {
      * @param node JSON-узел для конвертации
      * @return созданный XML-элемент
      */
-    private static Element buildElement(Document doc,
-                                        String name, JsonNode node) {
+    private static Element buildElement(Document doc, String name, JsonNode node) {
         Element el = doc.createElement(sanitize(name));
         if (node.isObject()) {
             Iterator<Entry<String, JsonNode>> fields = node.fields();
