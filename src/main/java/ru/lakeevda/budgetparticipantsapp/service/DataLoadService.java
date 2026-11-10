@@ -28,6 +28,9 @@ public class DataLoadService {
     private static final int COLUMN_LIMIT_HARD = 1595;
     private static final int DEFAULT_BATCH_SIZE = 32000;
 
+    /** Колонка первичного ключа таблицы. */
+    private static final String ID_COLUMN = "id";
+
     /** Разделитель колонок в сигнатуре группы строк. */
     private static final String SIGNATURE_SEPARATOR = "\u0001";
 
@@ -48,6 +51,8 @@ public class DataLoadService {
     /**
      * Загружает данные из файлов JSON в базу данных.
      * Удаляет предыдущие данные за период и перезаписывает новыми.
+     * Если запись с таким же {@value #ID_COLUMN} уже есть (например, загружена
+     * за другой период), она обновляется значениями из новой выгрузки.
      *
      * @param pageFiles файлы с JSON данными
      * @param from начальная дата периода
@@ -108,7 +113,7 @@ public class DataLoadService {
     private void ensureTable(Connection conn) throws SQLException {
         try (Statement st = conn.createStatement()) {
             st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table + " ("
-                    + "id text primary key, "
+                    + ID_COLUMN + " text primary key, "
                     + "last_update_from text NOT NULL, "
                     + "last_update_to text NOT NULL)");
             log.info("Таблица '" + table + "' готова");
@@ -251,6 +256,7 @@ public class DataLoadService {
 
     /**
      * Вставляет строки одной группы с разбиением на батчи.
+     * Конфликты по первичному ключу разрешаются обновлением существующей строки.
      *
      * @param conn  подключение к БД
      * @param group группа строк с одинаковой сигнатурой колонок
@@ -276,6 +282,8 @@ public class DataLoadService {
 
     /**
      * Строит SQL-запрос вставки для набора колонок.
+     * При совпадении первичного ключа ({@value #ID_COLUMN}) запись обновляется
+     * значениями из новой загрузки: строка могла быть загружена ранее за другой период.
      *
      * @param columns колонки группы
      * @return SQL-запрос вставки
@@ -288,7 +296,33 @@ public class DataLoadService {
             placeholders.append(i == 0 ? "?" : ", ?");
         }
         return "INSERT INTO " + table + " (" + names + ") VALUES ("
-                + placeholders + ")";
+                + placeholders + ")" + buildConflictClause(columns);
+    }
+
+    /**
+     * Строит завершающую часть запроса вставки, разрешающую конфликт по первичному ключу.
+     * Обновляются только колонки, присутствующие в данной группе строк,
+     * поэтому колонки, отсутствующие в новой записи, сохраняют прежние значения.
+     *
+     * @param columns колонки группы
+     * @return конструкция {@code ON CONFLICT ...} или пустая строка,
+     *         если первичного ключа нет в наборе колонок
+     */
+    private static String buildConflictClause(List<String> columns) {
+        if (!columns.contains(ID_COLUMN)) {
+            // без ключа конфликтовать по первичному ключу невозможно
+            return "";
+        }
+        StringJoiner updates = new StringJoiner(", ");
+        for (String col : columns) {
+            if (ID_COLUMN.equals(col)) continue;
+            updates.add(col + " = EXCLUDED." + col);
+        }
+        if (updates.length() == 0) {
+            // в группе только ключ: обновлять нечего
+            return " ON CONFLICT (" + ID_COLUMN + ") DO NOTHING";
+        }
+        return " ON CONFLICT (" + ID_COLUMN + ") DO UPDATE SET " + updates;
     }
 
     /**
