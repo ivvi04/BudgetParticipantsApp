@@ -4,22 +4,17 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
  * Тесты для {@link ZipService}.
@@ -29,10 +24,9 @@ import static org.junit.Assert.assertTrue;
  */
 public class ZipServiceTest {
 
-    private static final LocalDate FROM = LocalDate.of(2024, 1, 1);
-    private static final LocalDate TO = LocalDate.of(2024, 1, 31);
-
-    /** Временная директория для тестов. */
+    /**
+     * Временная директория для тестов.
+     */
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
@@ -44,9 +38,10 @@ public class ZipServiceTest {
     @Test
     public void archivesJsonAsXmlAndDeletesSource() throws Exception {
         File raw = temporaryFolder.newFolder("raw");
-        File json = write(raw, "page_1.json", "{\"id\":\"1\",\"name\":\"A\"}");
+        File json = write(raw, "page_2024-01-01_2024-01-31_00001.json",
+                "{\"id\":\"1\",\"name\":\"A\"}");
 
-        ZipService.zipPreviousRuns(raw, FROM, TO);
+        ZipService.zipPreviousRuns(raw);
 
         File zip = new File(raw, "archive_2024-01-01_2024-01-31.zip");
         assertTrue(zip.isFile());
@@ -54,7 +49,7 @@ public class ZipServiceTest {
 
         Map<String, String> entries = readZip(zip);
         assertEquals(1, entries.size());
-        String xml = entries.get("page_1.xml");
+        String xml = entries.get("page_2024-01-01_2024-01-31_00001.xml");
         assertTrue(xml.contains("<id>1</id>"));
         assertTrue(xml.contains("<name>A</name>"));
     }
@@ -69,9 +64,9 @@ public class ZipServiceTest {
         File raw = temporaryFolder.newFolder("raw");
         File bad = write(raw, "bad.json", "not a json");
 
-        ZipService.zipPreviousRuns(raw, FROM, TO);
+        ZipService.zipPreviousRuns(raw);
 
-        File zip = new File(raw, "archive_2024-01-01_2024-01-31.zip");
+        File zip = new File(raw, "archive_other.zip");
         assertTrue(zip.isFile());
         assertTrue(bad.exists());
         assertNull(readZip(zip).get("bad.xml"));
@@ -87,9 +82,11 @@ public class ZipServiceTest {
         File raw = temporaryFolder.newFolder("raw");
         write(raw, "note.txt", "text");
 
-        ZipService.zipPreviousRuns(raw, FROM, TO);
+        ZipService.zipPreviousRuns(raw);
 
-        assertFalse(new File(raw, "archive_2024-01-01_2024-01-31.zip").exists());
+        File[] archives = raw.listFiles((d, name) -> name.endsWith(".zip"));
+        assertNotNull(archives);
+        assertEquals(0, archives.length);
     }
 
     /**
@@ -100,17 +97,183 @@ public class ZipServiceTest {
     @Test
     public void ignoresNonJsonFiles() throws Exception {
         File raw = temporaryFolder.newFolder("raw");
-        File json = write(raw, "page.json", "{\"id\":1}");
+        File json = write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":1}");
         File txt = write(raw, "note.txt", "text");
 
-        ZipService.zipPreviousRuns(raw, FROM, TO);
+        ZipService.zipPreviousRuns(raw);
 
         assertFalse(json.exists());
         assertTrue(txt.exists());
         Map<String, String> entries = readZip(
                 new File(raw, "archive_2024-01-01_2024-01-31.zip"));
         assertEquals(1, entries.size());
-        assertTrue(entries.containsKey("page.xml"));
+        assertTrue(entries.containsKey("page_2024-01-01_2024-01-31_00001.xml"));
+    }
+
+    /**
+     * Проверяет, что архив называется по периоду из имени файла страницы.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void namesArchiveByPeriodFromFileName() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        write(raw, "page_2023-05-01_2023-05-31_00001.json", "{\"id\":\"1\"}");
+
+        ZipService.zipPreviousRuns(raw);
+
+        assertTrue(new File(raw, "archive_2023-05-01_2023-05-31.zip").isFile());
+        assertFalse(new File(raw, "archive_other.zip").exists());
+    }
+
+    /**
+     * Проверяет, что файлы с именами вне шаблона попадают в отдельный архив
+     * и не приписываются к чужому периоду.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void putsUnknownFileNamesIntoOtherArchive() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        write(raw, "page_dump.json", "{\"id\":\"1\"}");
+
+        ZipService.zipPreviousRuns(raw);
+
+        Map<String, String> entries = readZip(new File(raw, "archive_other.zip"));
+        assertEquals(1, entries.size());
+        assertTrue(entries.containsKey("page_dump.xml"));
+    }
+
+    /**
+     * Проверяет, что файлы разных периодов раскладываются по своим архивам.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void splitsFilesBetweenPeriodArchives() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        write(raw, "page_2023-05-01_2023-05-31_00001.json", "{\"id\":\"1\"}");
+        write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"2\"}");
+
+        ZipService.zipPreviousRuns(raw);
+
+        Map<String, String> may = readZip(new File(raw, "archive_2023-05-01_2023-05-31.zip"));
+        Map<String, String> january = readZip(new File(raw, "archive_2024-01-01_2024-01-31.zip"));
+        assertEquals(1, may.size());
+        assertEquals(1, january.size());
+        assertTrue(may.containsKey("page_2023-05-01_2023-05-31_00001.xml"));
+        assertTrue(january.containsKey("page_2024-01-01_2024-01-31_00001.xml"));
+    }
+
+    /**
+     * Проверяет, что повторная архивация за тот же период сохраняет
+     * ранее заархивированные страницы и не создаёт дубликатов.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void keepsPreviousEntriesWhenArchivingAgain() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"1\"}");
+        ZipService.zipPreviousRuns(raw);
+
+        write(raw, "page_2024-01-01_2024-01-31_00002.json", "{\"id\":\"2\"}");
+        ZipService.zipPreviousRuns(raw);
+
+        File zip = new File(raw, "archive_2024-01-01_2024-01-31.zip");
+        Map<String, String> entries = readZip(zip);
+        assertEquals(2, entries.size());
+        assertTrue(entries.containsKey("page_2024-01-01_2024-01-31_00001.xml"));
+        assertTrue(entries.containsKey("page_2024-01-01_2024-01-31_00002.xml"));
+
+        try (ZipFile zipFile = new ZipFile(zip)) {
+            assertEquals(2, zipFile.size());
+            assertNotNull(zipFile.getEntry("page_2024-01-01_2024-01-31_00001.xml"));
+            assertNotNull(zipFile.getEntry("page_2024-01-01_2024-01-31_00002.xml"));
+        }
+        assertEquals(0, tempFiles(raw).length);
+    }
+
+    /**
+     * Проверяет, что запись с тем же именем заменяется новой версией,
+     * а не дублируется.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void replacesEntryWithSameName() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"1\"}");
+        ZipService.zipPreviousRuns(raw);
+
+        write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"2\"}");
+        ZipService.zipPreviousRuns(raw);
+
+        File zip = new File(raw, "archive_2024-01-01_2024-01-31.zip");
+        Map<String, String> entries = readZip(zip);
+        assertEquals(1, entries.size());
+        String xml = entries.get("page_2024-01-01_2024-01-31_00001.xml");
+        assertTrue(xml.contains("<id>2</id>"));
+        assertFalse(xml.contains("<id>1</id>"));
+        try (ZipFile zipFile = new ZipFile(zip)) {
+            assertEquals(1, zipFile.size());
+        }
+    }
+
+    /**
+     * Проверяет, что исходный JSON удаляется только после успешной
+     * пересборки архива.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void keepsSourceWhenArchiveCannotBeWritten() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        File json = write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"1\"}");
+        File archive = new File(raw, "archive_2024-01-01_2024-01-31.zip");
+        File temp = new File(raw, archive.getName() + ".tmp");
+        // Каталог на месте временного файла делает запись архива невозможной
+        assertTrue(temp.mkdirs());
+
+        try {
+            ZipService.zipPreviousRuns(raw);
+            fail("Ожидалась ошибка записи архива");
+        } catch (IOException expected) {
+            assertTrue(json.exists());
+            assertFalse(archive.exists());
+        }
+    }
+
+    /**
+     * Проверяет, что запись-каталог прежнего архива пропускается без ошибки,
+     * а обычные записи сохраняются.
+     *
+     * @throws Exception при ошибках ввода-вывода
+     */
+    @Test
+    public void skipsDirectoryEntriesOfPreviousArchive() throws Exception {
+        File raw = temporaryFolder.newFolder("raw");
+        File zip = new File(raw, "archive_2024-01-01_2024-01-31.zip");
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zip))) {
+            zos.putNextEntry(new ZipEntry("docs/"));
+            zos.closeEntry();
+            zos.putNextEntry(new ZipEntry("old.xml"));
+            zos.write("<old/>".getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+        write(raw, "page_2024-01-01_2024-01-31_00001.json", "{\"id\":\"1\"}");
+
+        ZipService.zipPreviousRuns(raw);
+
+        Map<String, String> entries = readZip(zip);
+        assertFalse(entries.containsKey("docs/"));
+        assertTrue(entries.containsKey("old.xml"));
+        assertTrue(entries.containsKey("page_2024-01-01_2024-01-31_00001.xml"));
+    }
+
+    private static File[] tempFiles(File dir) {
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".tmp"));
+        return files == null ? new File[0] : files;
     }
 
     private static File write(File dir, String name, String content) throws IOException {
@@ -137,3 +300,4 @@ public class ZipServiceTest {
         return result;
     }
 }
+

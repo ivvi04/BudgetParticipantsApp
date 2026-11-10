@@ -3,23 +3,22 @@ package ru.lakeevda.budgetparticipantsapp;
 import ru.lakeevda.budgetparticipantsapp.client.ApiClient;
 import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import ru.lakeevda.budgetparticipantsapp.db.ClickHouseConnection;
-import ru.lakeevda.budgetparticipantsapp.db.DatabaseConnection;
 import ru.lakeevda.budgetparticipantsapp.db.PostgresConnection;
 import ru.lakeevda.budgetparticipantsapp.service.ClickHouseTransferService;
 import ru.lakeevda.budgetparticipantsapp.service.DataLoadService;
 import ru.lakeevda.budgetparticipantsapp.service.ZipService;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.*;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Основное приложение для загрузки данных реестра участников бюджетного процесса.
- * Скачивает данные из API, загружает в PostgreSQL, архивирует прошлые запуски.
  *
  * @author lakeev-da
  * @since 2026-11-06
@@ -38,13 +37,13 @@ public final class BudgetParticipantsApp {
         try {
             LocalDate from = LocalDate.parse(args[0]);
             LocalDate to = LocalDate.parse(args[1]);
-            if (from.isAfter(to)) {
-                log.severe("Дата lastUpdateFrom не может быть позже lastUpdateTo");
-                System.exit(1);
-            }
+            validatePeriod(from, to);
             run(from, to);
         } catch (DateTimeParseException e) {
             log.log(Level.INFO, "Некорректный формат даты: " + e.getMessage(), e);
+            System.exit(1);
+        } catch (IllegalArgumentException e) {
+            log.severe(e.getMessage());
             System.exit(1);
         } catch (Exception e) {
             log.log(Level.INFO, "Ошибка выполнения: " + e.getMessage(), e);
@@ -53,15 +52,24 @@ public final class BudgetParticipantsApp {
     }
 
     /**
-     * Выполняет основную логику приложения.
-     * 1. Скачивает страницы API
-     * 2. Загружает в PostgreSQL
-     * 3. Переносит в ClickHouse (если включено)
-     * 4. Архивирует прошлые запуски
+     * Проверяет корректность периода загрузки.
      *
      * @param from начальная дата периода
-     * @param to конечная дата периода
-     * @throws IOException при ошибках ввода-вывода
+     * @param to   конечная дата периода
+     * @throws IllegalArgumentException если начальная дата позже конечной
+     */
+    static void validatePeriod(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new IllegalArgumentException("Дата lastUpdateFrom не может быть позже lastUpdateTo");
+        }
+    }
+
+    /**
+     * Выполняет полный цикл: скачивание, загрузка, перенос в ClickHouse, архивация.
+     *
+     * @param from начальная дата периода
+     * @param to   конечная дата периода
+     * @throws IOException  при ошибках ввода-вывода
      * @throws SQLException при ошибках работы с БД
      */
     private static void run(LocalDate from, LocalDate to) throws IOException, SQLException {
@@ -73,7 +81,7 @@ public final class BudgetParticipantsApp {
         }
 
         // Архивирует прошлые запуски.
-        ZipService.zipPreviousRuns(dir, from, to);
+        ZipService.zipPreviousRuns(dir);
 
         // Скачивает все страницы API.
         ApiClient apiClient = new ApiClient();

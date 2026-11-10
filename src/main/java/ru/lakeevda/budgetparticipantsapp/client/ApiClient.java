@@ -22,7 +22,6 @@ import java.util.logging.Logger;
 
 /**
  * Клиент для скачивания страниц API.
- * Скачивает все страницы API за указанный период и сохраняет сырые ответы в файлы.
  *
  * @author lakeev-da
  * @since 2026-11-06
@@ -31,10 +30,7 @@ public class ApiClient {
 
     private static final Logger log = Logger.getLogger(ApiClient.class.getName());
 
-    /** Общее число страниц ещё неизвестно. */
     private static final int UNKNOWN_TOTAL_PAGES = -1;
-
-    /** API сообщил, что за период страниц нет. */
     private static final int NO_PAGES = 0;
 
     private final String urlTemplate;
@@ -48,19 +44,36 @@ public class ApiClient {
      * Конфигурация загружается из application.properties.
      */
     public ApiClient() {
-        this.urlTemplate = ConfigLoader.getProperty("api.url");
-        this.itemsKey = ConfigLoader.getProperty("api.itemsKey", "");
-        this.totalPagesKey = ConfigLoader.getProperty("api.totalPagesKey", "");
-        this.dateFormat = DateTimeFormatter.ofPattern(
-                ConfigLoader.getProperty("api.dateFormat", "yyyy-MM-dd"));
+        this(ConfigLoader.getProperty("api.url"),
+                ConfigLoader.getProperty("api.itemsKey", ""),
+                ConfigLoader.getProperty("api.totalPagesKey", ""),
+                DateTimeFormatter.ofPattern(
+                        ConfigLoader.getProperty("api.dateFormat", "yyyy-MM-dd")));
+    }
+
+    /**
+     * Создаёт клиента с явно заданными параметрами.
+     * Используется в тестах, чтобы не зависеть от application.properties.
+     *
+     * @param urlTemplate   шаблон URL
+     * @param itemsKey      ключ массива записей
+     * @param totalPagesKey ключ общего числа страниц
+     * @param dateFormat    формат дат
+     */
+    ApiClient(String urlTemplate, String itemsKey, String totalPagesKey,
+              DateTimeFormatter dateFormat) {
+        this.urlTemplate = urlTemplate;
+        this.itemsKey = itemsKey;
+        this.totalPagesKey = totalPagesKey;
+        this.dateFormat = dateFormat;
     }
 
     /**
      * Скачивает все страницы API за указанный период.
      * Выполняет пагинацию до получения всех записей.
      *
-     * @param from начальная дата периода
-     * @param to конечная дата периода
+     * @param from   начальная дата периода
+     * @param to     конечная дата периода
      * @param rawDir директория для хранения сырых файлов
      * @return список скачанных файлов
      * @throws IOException при ошибках сети или файловой системы
@@ -145,20 +158,19 @@ public class ApiClient {
      * @param page номер страницы
      * @return адрес страницы
      */
-    private URI buildPageUri(LocalDate from, LocalDate to, int page) {
+    URI buildPageUri(LocalDate from, LocalDate to, int page) {
         return URI.create(String.format(urlTemplate,
                 dateFormat.format(from), dateFormat.format(to), page));
     }
 
     /**
      * Определяет общее число страниц по ответу API.
-     * Если ключ не задан в конфигурации, возвращает {@link #UNKNOWN_TOTAL_PAGES}.
      *
      * @param root корневой узел JSON
-     * @return общее число страниц, {@link #NO_PAGES}, если страниц нет,
-     *         либо {@link Integer#MAX_VALUE}, если значение не найдено или не является числом
+     * @return число страниц или служебное значение {@link #NO_PAGES},
+     * {@link #UNKNOWN_TOTAL_PAGES} либо {@link Integer#MAX_VALUE}
      */
-    private int resolveTotalPages(JsonNode root) {
+    int resolveTotalPages(JsonNode root) {
         if (totalPagesKey.isEmpty()) {
             return UNKNOWN_TOTAL_PAGES;
         }
@@ -185,8 +197,8 @@ public class ApiClient {
      * @return сохранённый файл
      * @throws IOException при ошибках записи файла
      */
-    private File savePage(File rawDir, LocalDate from, LocalDate to, int page,
-                          String body) throws IOException {
+    File savePage(File rawDir, LocalDate from, LocalDate to, int page,
+                  String body) throws IOException {
         File out = new File(rawDir, pageFileName(from, to, page));
         Files.write(out.toPath(), body.getBytes(StandardCharsets.UTF_8));
         return out;
@@ -200,7 +212,7 @@ public class ApiClient {
      * @param page номер страницы
      * @return имя файла
      */
-    private static String pageFileName(LocalDate from, LocalDate to, int page) {
+    static String pageFileName(LocalDate from, LocalDate to, int page) {
         return String.format("page_%s_%s_%05d.json", from, to, page);
     }
 
@@ -226,7 +238,7 @@ public class ApiClient {
      * @param items      массив записей текущей страницы
      * @return {@code true}, если пагинацию следует остановить
      */
-    private static boolean shouldStopPagination(int page, int totalPages, JsonNode items) {
+    static boolean shouldStopPagination(int page, int totalPages, JsonNode items) {
         if (totalPages > 0 && page >= totalPages) {
             return true;
         }

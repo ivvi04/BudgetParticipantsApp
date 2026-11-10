@@ -13,17 +13,18 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.StringWriter;
 import java.util.Iterator;
 import java.util.Map.Entry;
-import java.util.logging.Logger;
 
 /**
- * Конвертация JSON в XML для помещения в архив.
+ * Конвертация JSON в XML.
  *
  * @author lakeev-da
  * @since 2026-11-06
  */
 public final class JsonToXmlConverter {
 
-    /** Частный конструктор. */
+    /**
+     * Частный конструктор.
+     */
     private JsonToXmlConverter() {
     }
 
@@ -59,7 +60,7 @@ public final class JsonToXmlConverter {
     /**
      * Создаёт XML-элемент из JSON-узла.
      *
-     * @param doc документ XML
+     * @param doc  документ XML
      * @param name имя элемента
      * @param node JSON-узел для конвертации
      * @return созданный XML-элемент

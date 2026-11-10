@@ -1,8 +1,7 @@
-package ru.lakeevda.budgetparticipantsapp;
+package ru.lakeevda.budgetparticipantsapp.mapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
-import ru.lakeevda.budgetparticipantsapp.mapper.JsonFlattener;
 
 import java.util.Map;
 
@@ -65,6 +64,30 @@ public class JsonFlattenerTest {
     }
 
     /**
+     * Проверяет, что индексы элементов массива не зависят от порядка
+     * элементов в ответе API.
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
+    @Test
+    public void assignsArrayIndicesRegardlessOfSourceOrder() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        String direct = "{\"heads\":[{\"fio\":\"Петров П.П.\",\"post\":\"Б\"},"
+                + "{\"fio\":\"Иванов И.И.\",\"post\":\"А\"}]}";
+        String reversed = "{\"heads\":[{\"fio\":\"Иванов И.И.\",\"post\":\"А\"},"
+                + "{\"fio\":\"Петров П.П.\",\"post\":\"Б\"}]}";
+
+        Map<String, String> first = JsonFlattener.flatten(mapper.readTree(direct));
+        Map<String, String> second = JsonFlattener.flatten(mapper.readTree(reversed));
+
+        assertEquals(first, second);
+        assertEquals("Иванов И.И.", first.get("heads_0_fio"));
+        assertEquals("А", first.get("heads_0_post"));
+        assertEquals("Петров П.П.", first.get("heads_1_fio"));
+        assertEquals("Б", first.get("heads_1_post"));
+    }
+
+    /**
      * Проверяет санитизацию имён колонок (преобразование в нижний регистр).
      *
      * @throws Exception при ошибках парсинга JSON
@@ -93,6 +116,37 @@ public class JsonFlattenerTest {
         }
         assertEquals("Иванов И.И.", flat.get("heads_0_fio"));
         assertEquals("Петров П.П.", flat.get("heads_1_fio"));
+    }
+
+    /**
+     * Проверяет разворачивание вложенных массивов (массив массивов).
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
+    @Test
+    public void flattensNestedArrays() throws Exception {
+        Map<String, String> flat = JsonFlattener.flatten(
+                new ObjectMapper().readTree("{\"m\":[[1,2],[3]]}"));
+
+        assertEquals("1", flat.get("m_0_0"));
+        assertEquals("2", flat.get("m_0_1"));
+        assertEquals("3", flat.get("m_1_0"));
+    }
+
+    /**
+     * Проверяет, что пустые объекты, пустые массивы и null пропускаются.
+     *
+     * @throws Exception при ошибках парсинга JSON
+     */
+    @Test
+    public void skipsEmptyContainersAndNulls() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertTrue(JsonFlattener.flatten(mapper.readTree("{}")).isEmpty());
+        assertTrue(JsonFlattener.flatten(mapper.readTree("[]")).isEmpty());
+        assertTrue(JsonFlattener.flatten(
+                mapper.readTree("{\"a\":{},\"b\":[],\"c\":null}")).isEmpty());
+        assertTrue(JsonFlattener.flatten(mapper.readTree("{\"a\":[null]}")).isEmpty());
     }
 }
 

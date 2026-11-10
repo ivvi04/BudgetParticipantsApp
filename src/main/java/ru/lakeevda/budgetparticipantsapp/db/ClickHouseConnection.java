@@ -5,12 +5,10 @@ import ru.lakeevda.budgetparticipantsapp.config.ConfigLoader;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Подключение к базе данных ClickHouse.
- * Реализует интерфейс DatabaseConnection.
  *
  * @author lakeev-da
  * @since 2026-11-06
@@ -27,6 +25,7 @@ public class ClickHouseConnection implements DatabaseConnection {
     /**
      * Конструктор-фабрика.
      * Загружает конфигурацию из application.properties.
+     *
      * @throws IllegalStateException если конфигурация некорректна
      */
     private ClickHouseConnection() {

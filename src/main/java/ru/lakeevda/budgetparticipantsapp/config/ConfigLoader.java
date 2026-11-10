@@ -7,9 +7,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Лоадер конфигурации.
- * Загружает свойства из application.properties, расположенного в classpath.
- * Обеспечивает кэширование и единый экземпляр конфигурации.
+ * Лоадер конфигурации из application.properties в classpath.
  *
  * @author lakeev-da
  * @since 2026-11-06
@@ -26,8 +24,9 @@ public class ConfigLoader {
     /**
      * Конструктор-фабрика.
      * Загружает свойства из application.properties.
+     *
      * @throws IllegalStateException если файл конфигурации не найден
-     * @throws RuntimeException при ошибке загрузки конфигурации
+     * @throws RuntimeException      при ошибке загрузки конфигурации
      */
     private ConfigLoader() {
         this.properties = new Properties();
@@ -44,20 +43,11 @@ public class ConfigLoader {
         }
     }
 
-    /**
-     * Получает единственный экземпляр ConfigLoader.
-     *
-     * @return единственный экземпляр ConfigLoader
-     */
-    public static ConfigLoader getInstance() {
-        return INSTANCE;
-    }
-
 
     /**
      * Получает значение свойства с заданным значением по умолчанию.
      *
-     * @param key ключ свойства
+     * @param key          ключ свойства
      * @param defaultValue значение по умолчанию
      * @return значение свойства или defaultValue если ключ не найден
      */

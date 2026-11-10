@@ -5,7 +5,6 @@ import java.sql.SQLException;
 
 /**
  * Интерфейс для подключения к базе данных.
- * Обеспечивает абстракцию над различными типами БД (PostgreSQL, ClickHouse).
  *
  * @author lakeev-da
  * @since 2026-11-06

@@ -15,7 +15,6 @@ import java.util.logging.Logger;
 
 /**
  * Сервис для загрузки данных в базу данных.
- * Создаёт таблицу, добавляет недостающие колонки динамически и загружает данные.
  *
  * @author lakeev-da
  * @since 2026-11-06
@@ -27,11 +26,7 @@ public class DataLoadService {
     private static final int COLUMN_LIMIT_SOFT = 1500;
     private static final int COLUMN_LIMIT_HARD = 1595;
     private static final int DEFAULT_BATCH_SIZE = 32000;
-
-    /** Колонка первичного ключа таблицы. */
     private static final String ID_COLUMN = "id";
-
-    /** Разделитель колонок в сигнатуре группы строк. */
     private static final String SIGNATURE_SEPARATOR = "\u0001";
 
     private final PostgresConnection databaseConnection;
@@ -50,57 +45,76 @@ public class DataLoadService {
 
     /**
      * Загружает данные из файлов JSON в базу данных.
-     * Удаляет предыдущие данные за период и перезаписывает новыми.
-     * Если запись с таким же {@value #ID_COLUMN} уже есть (например, загружена
-     * за другой период), она обновляется значениями из новой выгрузки.
      *
      * @param pageFiles файлы с JSON данными
-     * @param from начальная дата периода
-     * @param to конечная дата периода
+     * @param from      начальная дата периода
+     * @param to        конечная дата периода
      * @throws SQLException при ошибках работы с БД
      */
     public void load(List<File> pageFiles, LocalDate from, LocalDate to) throws SQLException {
         log.info(String.format("Запуск загрузки данных за период %s..%s, файлов: %d", from, to, pageFiles.size()));
-        
+
         try (Connection connection = databaseConnection.getConnection()) {
             connection.setAutoCommit(false);
 
             ensureTable(connection);
+            Set<String> tableCols = readTableColumns(connection);
+            deleteByPeriod(connection, from, to);
+            connection.commit();
 
-            // Собираем все колонки, которые встречаются в скачанных данных
-            Set<String> allCols = new TreeSet<>();
-            List<Map<String, String>> rows = new ArrayList<>();
+            long inserted = 0;
             for (File f : pageFiles) {
-                try {
-                    JsonNode root = mapper.readTree(f);
-                    // Массив записей лежит в поле "data" корневого объекта;
-                    // если его нет — считаем, что корень сам является массивом
-                    JsonNode items = root.has("data") ? root.get("data") : root;
-                    if (!items.isArray()) {
-                        throw new SQLException("Неожиданная структура JSON в " + f
-                                + ": поле 'data' отсутствует, а корень не является массивом");
-                    }
-                    for (JsonNode item : items) {
-                        Map<String, String> flat = JsonFlattener.flatten(item);
-                        flat.put("last_update_from", from.toString());
-                        flat.put("last_update_to", to.toString());
-                        allCols.addAll(flat.keySet());
-                        rows.add(flat);
-                    }
-                } catch (SQLException e) {
-                    throw e;
-                } catch (Exception e) {
-                    log.log(Level.INFO, "Не удалось разобрать " + f, e);
-                    throw new SQLException("Не удалось разобрать " + f, e);
+                List<Map<String, String>> rows = readRows(f, from, to);
+                if (rows.isEmpty()) {
+                    log.fine("Нет записей в " + f.getName());
+                    continue;
                 }
+                Set<String> required = new HashSet<>(tableCols);
+                for (Map<String, String> row : rows) {
+                    required.addAll(row.keySet());
+                }
+                tableCols = addMissingColumns(connection, tableCols, required);
+                List<Map<String, String>> fitting = filterOverflowRows(rows, tableCols);
+                insertRows(connection, fitting, tableCols);
+                connection.commit();
+                inserted += fitting.size();
             }
 
-            Set<String> tableCols = addMissingColumns(connection, allCols);
-            deleteByPeriod(connection, from, to);
-            insertRows(connection, rows, tableCols);
+            log.info("Загрузка данных успешно завершена, вставлено строк: " + inserted);
+        }
+    }
 
-            connection.commit();
-            log.info("Загрузка данных успешно завершена");
+    /**
+     * Читает записи одной страницы выгрузки.
+     *
+     * @param file файл страницы
+     * @param from начальная дата периода
+     * @param to   конечная дата периода
+     * @return плоские строки страницы с проставленным периодом
+     * @throws SQLException если файл не удаётся разобрать
+     */
+    List<Map<String, String>> readRows(File file, LocalDate from, LocalDate to)
+            throws SQLException {
+        try {
+            JsonNode root = mapper.readTree(file);
+            JsonNode items = root.has("data") ? root.get("data") : root;
+            if (!items.isArray()) {
+                throw new SQLException("Неожиданная структура JSON в " + file
+                        + ": поле 'data' отсутствует, а корень не является массивом");
+            }
+            List<Map<String, String>> rows = new ArrayList<>(items.size());
+            for (JsonNode item : items) {
+                Map<String, String> flat = JsonFlattener.flatten(item);
+                flat.put("last_update_from", from.toString());
+                flat.put("last_update_to", to.toString());
+                rows.add(flat);
+            }
+            return rows;
+        } catch (SQLException e) {
+            throw e;
+        } catch (Exception e) {
+            log.log(Level.INFO, "Не удалось разобрать " + file, e);
+            throw new SQLException("Не удалось разобрать " + file, e);
         }
     }
 
@@ -121,34 +135,50 @@ public class DataLoadService {
     }
 
     /**
-     * Добавляет недостающие колонки в таблицу.
+     * Читает фактический набор колонок таблицы.
      *
      * @param conn подключение к БД
-     * @param cols набор новых колонок
-     * @return фактический набор колонок таблицы
+     * @return набор имён колонок, имеющихся в таблице
      * @throws SQLException при ошибках работы с БД
      */
-    private Set<String> addMissingColumns(Connection conn, Set<String> cols) throws SQLException {
+    private Set<String> readTableColumns(Connection conn) throws SQLException {
         Set<String> existing = new HashSet<>();
         try (ResultSet rs = conn.getMetaData().getColumns(null, null, table.toLowerCase(), null)) {
             while (rs.next()) existing.add(rs.getString("COLUMN_NAME"));
         }
+        return existing;
+    }
+
+    /**
+     * Добавляет недостающие колонки в таблицу.
+     *
+     * @param conn     подключение к БД
+     * @param existing колонки, уже имеющиеся в таблице
+     * @param cols     набор требуемых колонок
+     * @return фактический набор колонок таблицы
+     * @throws SQLException при ошибках работы с БД
+     */
+    private Set<String> addMissingColumns(Connection conn, Set<String> existing, Set<String> cols)
+            throws SQLException {
+        Set<String> missing = new TreeSet<>();
+        for (String col : cols) {
+            if (!existing.contains(col)) missing.add(col);
+        }
+        if (missing.isEmpty()) {
+            return existing;
+        }
 
         int before = existing.size();
-        int planned = before + cols.size();
-
-        if (planned >= COLUMN_LIMIT_SOFT) {
+        int planned = before + missing.size();
+        if (before < COLUMN_LIMIT_SOFT && planned >= COLUMN_LIMIT_SOFT) {
             log.warning("Таблица '" + table + "' приближается к лимиту колонок PostgreSQL: "
                     + "сейчас " + before + " колонок, "
                     + planned + " после этой загрузки (мягкий лимит " + COLUMN_LIMIT_SOFT
                     + ", жёсткий лимит 1600).");
         }
 
-        int skipped = 0;
-        for (String col : cols) {
-            if (existing.contains(col)) continue;
+        for (String col : missing) {
             if (existing.size() >= COLUMN_LIMIT_HARD) {
-                skipped++;
                 continue;
             }
             try (Statement st = conn.createStatement()) {
@@ -157,11 +187,61 @@ public class DataLoadService {
                 log.fine("Добавлена колонка: " + col);
             }
         }
-        if (skipped > 0) {
-            log.warning("Колонок не добавлено: " + skipped + " (жёсткий лимит "
-                    + COLUMN_LIMIT_HARD + "). Их значения будут пропущены.");
+        return existing;
+    }
+
+    /**
+     * Отбрасывает записи, для которых в таблице не хватает колонок.
+     *
+     * @param rows      строки страницы
+     * @param tableCols фактический набор колонок таблицы
+     * @return строки, которые можно вставить без потери значений
+     */
+    static List<Map<String, String>> filterOverflowRows(List<Map<String, String>> rows,
+                                                        Set<String> tableCols) {
+        List<Map<String, String>> fitting = new ArrayList<>(rows.size());
+        for (Map<String, String> row : rows) {
+            int missing = countMissingColumns(row, tableCols);
+            if (missing == 0) {
+                fitting.add(row);
+                continue;
+            }
+            String id = row.get(ID_COLUMN);
+            log.warning("Запись с id " + (id == null || id.isEmpty() ? "<без id>" : id)
+                    + " пропущена по причине превышения количества колонок: требуется "
+                    + (tableCols.size() + missing) + " из возможных " + COLUMN_LIMIT_HARD
+                    + " (не поместилось " + missing + ").");
         }
-        return existing; // фактический набор колонок таблицы
+        return fitting;
+    }
+
+    /**
+     * Считает непустые значения строки, для которых в таблице нет колонки.
+     *
+     * @param row       строка данных
+     * @param tableCols фактический набор колонок таблицы
+     * @return число значений, для которых не хватило колонок
+     */
+    private static int countMissingColumns(Map<String, String> row, Set<String> tableCols) {
+        int missing = 0;
+        for (Map.Entry<String, String> entry : row.entrySet()) {
+            if (isMissingValue(entry, tableCols)) {
+                missing++;
+            }
+        }
+        return missing;
+    }
+
+    /**
+     * Проверяет, что значение колонки непустое и самой колонки нет в таблице.
+     *
+     * @param entry     пара «колонка → значение»
+     * @param tableCols фактический набор колонок таблицы
+     * @return {@code true}, если для значения не хватает колонки
+     */
+    private static boolean isMissingValue(Map.Entry<String, String> entry, Set<String> tableCols) {
+        String value = entry.getValue();
+        return value != null && !value.isEmpty() && !tableCols.contains(entry.getKey());
     }
 
     /**
@@ -169,7 +249,7 @@ public class DataLoadService {
      *
      * @param conn подключение к базе данных
      * @param from начальная дата периода
-     * @param to конечная дата периода
+     * @param to   конечная дата периода
      * @throws SQLException при ошибках работы с БД
      */
     private void deleteByPeriod(Connection conn, LocalDate from, LocalDate to) throws SQLException {
@@ -204,7 +284,7 @@ public class DataLoadService {
         List<String> colList = new ArrayList<>(new TreeSet<>(cols));
         Map<String, RowGroup> groups = groupRows(rows, colList);
 
-        log.info("Вставка строк: колонок в таблице=" + colList.size()
+        log.fine("Вставка строк: колонок в таблице=" + colList.size()
                 + ", групп строк=" + groups.size());
 
         for (RowGroup group : groups.values()) {
@@ -213,8 +293,7 @@ public class DataLoadService {
     }
 
     /**
-     * Группирует строки по одинаковой сигнатуре непустых колонок.
-     * Порядок групп соответствует порядку первого появления сигнатуры.
+     * Группирует строки по сигнатуре непустых колонок.
      *
      * @param rows    строки для вставки
      * @param colList отсортированный список всех колонок таблицы
@@ -243,7 +322,7 @@ public class DataLoadService {
      * @param colList отсортированный список всех колонок таблицы
      * @return список непустых колонок в порядке {@code colList}
      */
-    private static List<String> presentColumns(Map<String, String> row, List<String> colList) {
+    static List<String> presentColumns(Map<String, String> row, List<String> colList) {
         List<String> present = new ArrayList<>();
         for (String col : colList) {
             String value = row.get(col);
@@ -256,7 +335,6 @@ public class DataLoadService {
 
     /**
      * Вставляет строки одной группы с разбиением на батчи.
-     * Конфликты по первичному ключу разрешаются обновлением существующей строки.
      *
      * @param conn  подключение к БД
      * @param group группа строк с одинаковой сигнатурой колонок
@@ -282,13 +360,11 @@ public class DataLoadService {
 
     /**
      * Строит SQL-запрос вставки для набора колонок.
-     * При совпадении первичного ключа ({@value #ID_COLUMN}) запись обновляется
-     * значениями из новой загрузки: строка могла быть загружена ранее за другой период.
      *
      * @param columns колонки группы
      * @return SQL-запрос вставки
      */
-    private String buildInsertSql(List<String> columns) {
+    String buildInsertSql(List<String> columns) {
         StringJoiner names = new StringJoiner(", ");
         StringBuilder placeholders = new StringBuilder();
         for (int i = 0; i < columns.size(); i++) {
@@ -301,14 +377,12 @@ public class DataLoadService {
 
     /**
      * Строит завершающую часть запроса вставки, разрешающую конфликт по первичному ключу.
-     * Обновляются только колонки, присутствующие в данной группе строк,
-     * поэтому колонки, отсутствующие в новой записи, сохраняют прежние значения.
      *
      * @param columns колонки группы
      * @return конструкция {@code ON CONFLICT ...} или пустая строка,
-     *         если первичного ключа нет в наборе колонок
+     * если первичного ключа нет в наборе колонок
      */
-    private static String buildConflictClause(List<String> columns) {
+    static String buildConflictClause(List<String> columns) {
         if (!columns.contains(ID_COLUMN)) {
             // без ключа конфликтовать по первичному ключу невозможно
             return "";

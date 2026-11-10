@@ -18,14 +18,15 @@ services:
         FROM postgres:13
         COPY --from=build /usr/local/pgsql32 /usr/local/pgsql32
         RUN for f in postgres psql pg_isready initdb pg_ctl; do \
-                ln -sf /usr/local/pgsql32/bin/$$f /usr/local/bin/$$f; \
+                ln -sf /usr/local/pgsql32/bin/$f /usr/local/bin/$f; \
             done
-#    image: postgres:13-alpine
+
     command: ["postgres", "-c", "listen_addresses=*"]
     environment:
       POSTGRES_DB: mydb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
       - "5433:5432"
     volumes:
@@ -35,6 +36,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
 
   clickhouse:
     image: clickhouse/clickhouse-server:22.3
@@ -47,7 +65,35 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
 
 volumes:
   pgdata:
+    driver: local
   chdata:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
