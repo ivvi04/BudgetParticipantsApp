@@ -12,8 +12,9 @@ import java.util.logging.Logger;
 
 /**
  * Сервис переноса данных из PostgreSQL в ClickHouse.
+ * Использует JDBC для переноса данных через промежуточную таблицу.
  *
- * @author lakeev-da
+ * @author lakeevda
  * @since 2026-11-06
  */
 public class ClickHouseTransferService {
@@ -34,19 +35,19 @@ public class ClickHouseTransferService {
      * @param postgresConnection подключение к PostgreSQL
      */
     public ClickHouseTransferService(DatabaseConnection clickHouseConnection,
-                                     DatabaseConnection postgresConnection) {
+                                      DatabaseConnection postgresConnection) {
         this.clickHouseConnection = clickHouseConnection;
         this.postgresConnection = postgresConnection;
         this.table = ConfigLoader.getProperty("db.table");
     }
 
     /**
-     * Проверяет, включён ли перенос в ClickHouse.
+     * Проверяет, включён ли JDBC-перенос в ClickHouse.
      *
      * @return true если перенос включён, false иначе
      */
     public boolean isEnabled() {
-        return Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.enabled", "false"));
+        return Boolean.parseBoolean(ConfigLoader.getProperty("clickhouse.jdbc.enabled", "false"));
     }
 
     /**
@@ -55,7 +56,7 @@ public class ClickHouseTransferService {
      * @throws SQLException при ошибках работы с БД
      */
     public void transfer() throws SQLException {
-        log.info("Запуск переноса данных из PostgreSQL в ClickHouse");
+        log.info("Запуск JDBC-переноса данных из PostgreSQL в ClickHouse");
         String staging = table + STAGING_SUFFIX;
         try (Connection pg = postgresConnection.getConnection();
              Connection ch = clickHouseConnection.getConnection()) {
@@ -73,7 +74,7 @@ public class ClickHouseTransferService {
                 rollbackQuietly(pg);
                 throw e;
             }
-            log.info("ClickHouse: перенесено строк: " + copied + " в таблицу " + table);
+            log.info("JDBC-перенос: перенесено строк: " + copied + " в таблицу " + table);
         }
     }
 
@@ -113,7 +114,7 @@ public class ClickHouseTransferService {
      * Строит DDL для таблицы ClickHouse.
      *
      * @param name    имя таблицы
-     * @param columns список колонок из PostgreSQL
+     * @param columns список колонок
      * @return SQL-запрос создания таблицы
      */
     static String buildCreateTableSql(String name, List<String> columns) {
