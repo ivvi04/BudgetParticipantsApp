@@ -1,4 +1,4 @@
-# data-loader
+# Budget Participants
 
 Консольное Java-приложение (Java 8, Maven): скачивает реестр УБП/НУБП из ЕПБС
 (https://budget.gov.ru/epbs/registry/ubpandnubp/data) за период
@@ -21,6 +21,14 @@ PostgreSQL, при необходимости переносит её в ClickHo
       service/ZipService.java         архивация JSON в zip (XML внутри)
     src/main/resources/application.properties
     src/test/java/...                 JUnit 4 тесты
+
+## Требования
+
+- JDK 8;
+- Docker и Docker Compose — для локальных PostgreSQL и ClickHouse (если базы уже
+  доступны, не нужны);
+- Maven устанавливать не обязательно: в репозитории есть wrapper — `mvnw`
+  (Linux/macOS) и `mvnw.cmd` (Windows).
 
 ## Развёртывание БД
 
@@ -51,8 +59,18 @@ classpath, файл вне jar не поддерживается):
 
 ## Сборка и запуск
 
-    mvn clean package
-    java "-Dfile.encoding=UTF-8" -jar target/data-loader-1.0.0-jar-with-dependencies.jar 2024-01-01 2024-01-31
+    # Linux/macOS
+    ./mvnw clean package
+
+    # Windows
+    mvnw.cmd clean package
+
+    java "-Dfile.encoding=UTF-8" -jar target/budget-participants-0.0.1-SNAPSHOT-jar-with-dependencies.jar 2024-01-01 2024-01-31
+
+Имя исполняемого jar определяется `groupId`, `artifactId` и `version` из
+`pom.xml`; актуальный файл всегда лежит в `target/` с суффиксом
+`-jar-with-dependencies`. Если Maven установлен глобально, вместо wrapper можно
+использовать `mvn`.
 
 Обязательные аргументы: `lastUpdateFrom` и `lastUpdateTo` в формате ISO
 (`yyyy-MM-dd`), иначе приложение завершается с ошибкой. Если `from > to`,
@@ -64,7 +82,7 @@ classpath, файл вне jar не поддерживается):
 Порядок шагов в `BudgetParticipantsApp.run`:
 
 1. **Архивация прошлых запусков** — все `*.json` из `storage.rawDir`
-   группируются по периоду из своего имени (`page_<from>_<to>_<pageNum>.json`)
+   группируются по периоду из своего имени (`page_<from>_<to>_<NNNNN>.json`)
    и конвертируются в XML внутри `archive_<from>_<to>.zip`. Архив пересобирается
    во временном файле и атомарно подменяет прежний: уже заархивированные записи
    сохраняются, совпадающие по имени — заменяются новой версией, дубликатов не
@@ -75,7 +93,8 @@ classpath, файл вне jar не поддерживается):
 2. **Скачивание** — пагинация `pageSize=500` (зашито в шаблон URL), `pageNum`
    с 1. Остановка по достижении `pageCount` или (если счётчик неизвестен) по
    пустому массиву `data`. Сырые ответы пишутся в
-   `page_<from>_<to>_<pageNum>.json`.
+   `page_<from>_<to>_<NNNNN>.json`, где номер страницы дополнен нулями до
+   5 цифр.
 3. **Загрузка в PostgreSQL** — таблица создаётся при отсутствии. Колонки
    добавляются по мере появления новых полей (`ALTER TABLE ADD COLUMN ... text`).
    Повторная загрузка за тот же период перезаписывает данные: перед вставкой
@@ -145,7 +164,7 @@ WARN, после 1595 новые колонки не добавляются. Т�
 
 ## Тесты
 
-    mvn test
+    ./mvnw test        # Windows: mvnw.cmd test
 
 Покрыты: `ApiClient` (извлечение массива, число страниц, остановка пагинации,
 имя файла и URL страницы, сохранение страницы), `JsonFlattener` (разворачивание,

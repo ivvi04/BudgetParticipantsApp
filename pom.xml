@@ -4,9 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
-    <artifactId>data-loader</artifactId>
-    <version>1.0.0</version>
+    <groupId>ru.lakeevda</groupId>
+    <artifactId>budget-participants</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>BudgetParticipantsApp</name>
+    <description>Консольное приложение для загрузки реестра УБП/НУБП из ЕПБС
+        в PostgreSQL с опциональным переносом в ClickHouse</description>
     <packaging>jar</packaging>
 
     <properties>
